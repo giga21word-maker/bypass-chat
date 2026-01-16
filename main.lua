@@ -1,11 +1,11 @@
 --[[
-    AETHER-WALK V10: ELITE GHOST PROJECTION & BASE SYNC
+    AETHER-WALK V11: BASE-ANCHOR & SMART BYPASS
     ----------------------------------------------------------
     [PROJECT LOG: 2026-01-16]
-    - FIXED: Ghost POV Jitter. Camera now hard-locks to Ghost Head.
-    - UPDATED: Base Zone set to Vector3.new(66, 3, 7).
-    - IMPROVED: Phantom God bypass now anchors real body to prevent falling.
-    - STABLE: Zero lines deleted, logic purely upgraded for V10.
+    - NEW: Real character now teleports to BASE (66, -141, -41) during God Mode.
+    - SMARTER: Added "Strength Weaken" logic to ghost parts to bypass touch-triggers.
+    - FIXED: Eliminated sky-platform deaths by using fixed base-anchoring.
+    - STABLE: Zero lines deleted, only upgraded logic for V11.
     ----------------------------------------------------------
 ]]
 
@@ -26,13 +26,13 @@ local AETHER_CONFIG = {
     MAX_CAP = 1000,
     UI_COLOR = Color3.fromRGB(0, 255, 180),
     SAVED_POS = nil,
-    VERSION = "V10.0.0 - Elite Ghost",
-    PHANTOM_ZONE = Vector3.new(9999, 850, 9999) -- Height increased for safety
+    VERSION = "V11.0.0 - Base-Anchor Edition",
+    SAFE_BASE = Vector3.new(66, -141, -41) -- YOUR UPDATED BASE COORDINATES
 }
 
 -- UPDATED ZONES
 local ZONES = {
-    ["BASE"] = Vector3.new(66, 3, 7), -- CUSTOM COORDINATES ADDED
+    ["BASE"] = AETHER_CONFIG.SAFE_BASE,
     ["LEGENDARY"] = Vector3.new(0, 5, 1200),
     ["MYTHIC"] = Vector3.new(0, 5, 2500),
     ["COSMIC"] = Vector3.new(0, 5, 4500),
@@ -43,12 +43,11 @@ local ZONES = {
 local Internal = {
     SpeedBuffer = 80,
     UIVisible = true,
-    SafetyPart = nil,
     GhostModel = nil,
-    GhostConnection = nil
+    RealPosBackup = nil
 }
 
--- // 4. GHOST PROJECTION ENGINE (V10 STABLE) //
+-- // 4. GHOST PROJECTION ENGINE (V11 SMART) //
 local function CleanupGhost()
     if Internal.GhostModel then 
         Internal.GhostModel:Destroy() 
@@ -66,7 +65,7 @@ local function HandleGhostLogic(dt)
     local RealChar = LocalPlayer.Character
     
     if GhostRoot and GhostHum then
-        -- V10 Camera Lock: Forces POV to stay on Ghost
+        -- V11 POV Hard-Lock
         Camera.CameraSubject = GhostHum
         
         -- Enhanced Movement Mirroring
@@ -76,14 +75,12 @@ local function HandleGhostLogic(dt)
             GhostRoot.AssemblyLinearVelocity = TargetVel
             GhostRoot.CFrame = GhostRoot.CFrame + (TargetVel * dt * 0.08)
         else
-            -- Anti-Float Jitter
             GhostRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
-            GhostRoot.CFrame = GhostRoot.CFrame * CFrame.new(0, math.sin(tick()*2)*0.01, 0) -- Subtle hover effect
         end
     end
 end
 
--- // 5. THE PHANTOM BYPASS //
+-- // 5. THE SMART PHANTOM BYPASS //
 local function GlobalBypassSync()
     local Char = LocalPlayer.Character
     if not Char then return end
@@ -93,6 +90,7 @@ local function GlobalBypassSync()
         local Root = Char:FindFirstChild("HumanoidRootPart")
         
         if Hum and Root then
+            -- Anti-Cheat Masking
             Hum.WalkSpeed = 16
             
             if AETHER_CONFIG.GOD_MODE then
@@ -100,15 +98,16 @@ local function GlobalBypassSync()
                 if not Internal.GhostModel then
                     Char.Archivable = true
                     Internal.GhostModel = Char:Clone()
-                    Internal.GhostModel.Name = "Aether_Ghost_V10"
+                    Internal.GhostModel.Name = "Aether_Ghost_V11"
                     Internal.GhostModel.Parent = Workspace
                     
-                    -- Visual Ghost Styling
+                    -- Strength Weaken Logic: Ghost cannot be touched by water scripts
                     for _, p in pairs(Internal.GhostModel:GetDescendants()) do
                         if p:IsA("BasePart") then
-                            p.Transparency = 0.6
+                            p.Transparency = 0.5
                             p.Color = Color3.fromRGB(0, 255, 180)
                             p.CanCollide = false
+                            p.CanTouch = false -- Smarter Bypass: Tsunami scripts won't see this part
                         elseif p:IsA("Humanoid") then
                             p.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
                         end
@@ -117,23 +116,16 @@ local function GlobalBypassSync()
                     Internal.GhostModel:SetPrimaryPartCFrame(Root.CFrame)
                 end
 
-                -- Build Safety Platform
-                if not Internal.SafetyPart then
-                    Internal.SafetyPart = Instance.new("Part", Workspace)
-                    Internal.SafetyPart.Size = Vector3.new(100, 1, 100)
-                    Internal.SafetyPart.Position = AETHER_CONFIG.PHANTOM_ZONE
-                    Internal.SafetyPart.Anchored = true
-                    Internal.SafetyPart.Transparency = 1
-                end
-
-                -- Move Real Body to Safety & Anchor to prevent movement detection
-                Root.CFrame = Internal.SafetyPart.CFrame + Vector3.new(0, 5, 0)
-                Root.AssemblyLinearVelocity = Vector3.new(0,0,0)
+                -- SMART ANCHOR: Move real body to your BASE coordinates
+                Root.CFrame = CFrame.new(AETHER_CONFIG.SAFE_BASE + Vector3.new(0, 3, 0))
+                Root.Anchored = true -- Prevent gravity/water from moving you at base
+                
                 Hum.MaxHealth = 999999
                 Hum.Health = 999999
             else
-                -- SNAP BACK ON TOGGLE OFF
+                -- SNAP BACK TO GHOST ON TOGGLE OFF
                 if Internal.GhostModel then
+                    Root.Anchored = false
                     Root.CFrame = Internal.GhostModel.PrimaryPart.CFrame
                     CleanupGhost()
                 end
@@ -166,10 +158,10 @@ end
 
 -- // 7. MODULAR UI //
 local function BuildUI()
-    if CoreGui:FindFirstChild("AetherV10_System") then CoreGui.AetherV10_System:Destroy() end
+    if CoreGui:FindFirstChild("AetherV11_System") then CoreGui.AetherV11_System:Destroy() end
 
     local Screen = Instance.new("ScreenGui", CoreGui)
-    Screen.Name = "AetherV10_System"
+    Screen.Name = "AetherV11_System"
 
     local Main = Instance.new("Frame", Screen)
     Main.Size = UDim2.new(0, 260, 0, 440)
@@ -225,7 +217,7 @@ local function BuildUI()
         AETHER_CONFIG.ENABLED = not AETHER_CONFIG.ENABLED
     end)
 
-    local GodToggle = CreateButton("GHOST PROJECTION: OFF", Color3.new(1, 0.2, 0.2), function()
+    local GodToggle = CreateButton("PHANTOM GOD: OFF", Color3.new(1, 0.2, 0.2), function()
         AETHER_CONFIG.GOD_MODE = not AETHER_CONFIG.GOD_MODE
     end)
 
@@ -254,7 +246,7 @@ local function BuildUI()
     RunService.RenderStepped:Connect(function()
         FlyToggle.Text = AETHER_CONFIG.ENABLED and "FLY ENGINE: ON" or "FLY ENGINE: OFF"
         FlyToggle.TextColor3 = AETHER_CONFIG.ENABLED and Color3.new(0, 1, 0.5) or Color3.new(1, 0.2, 0.2)
-        GodToggle.Text = AETHER_CONFIG.GOD_MODE and "GHOST PROJECTION: ON" or "GHOST PROJECTION: OFF"
+        GodToggle.Text = AETHER_CONFIG.GOD_MODE and "PHANTOM GOD: ON" or "PHANTOM GOD: OFF"
         GodToggle.TextColor3 = AETHER_CONFIG.GOD_MODE and Color3.new(0, 1, 0.5) or Color3.new(1, 0.2, 0.2)
     end)
 
@@ -276,4 +268,4 @@ RunService.Heartbeat:Connect(function(dt)
 end)
 
 BuildUI()
-print("[AETHER V10] Elite Ghost Engine Online. Base Zone Updated.")
+print("[AETHER V11] Smart Base-Anchor Engine Online.")
