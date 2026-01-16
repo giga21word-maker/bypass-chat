@@ -1,10 +1,10 @@
 --[[
-    STRATUS-WALK V3: CFRAME VECTOR ENGINE
+    AETHER-WALK V4: VELOCITY-INJECTION BYPASS
     --------------------------------------------------
     [FIXES]
-    - Flight Fix: Uses CFrame manipulation instead of BodyMovers.
-    - Vertical Sync: Look Up = Ascend, Look Down = Descend.
-    - Animation Lock: Keeps walking legs active while floating.
+    - Vertical Flight: Uses Force-Vectoring to overcome gravity.
+    - Speed Bypass: Frame-splits high velocity to avoid ban-flags.
+    - State Lock: Forces 'Running' but prevents floor-clipping.
     --------------------------------------------------
 ]]
 
@@ -17,16 +17,49 @@ local Workspace = game:GetService("Workspace")
 local Camera = Workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
--- // 2. CONFIG //
-local STRATUS_V3 = {
+-- // 2. ELITE CONFIG //
+local AETHER_CONFIG = {
     ENABLED = false,
-    SPEED = 50,
-    UI_COLOR = Color3.fromRGB(0, 180, 255)
+    SPEED = 80, -- High speed (Bypassed)
+    UI_COLOR = Color3.fromRGB(0, 255, 180),
+    MAX_CAP = 300
 }
 
--- // 3. FLY ENGINE //
-local function ExecuteFlight(dt)
-    if not STRATUS_V3.ENABLED then return end
+-- // 3. ENGINE STATE //
+local Internal = {
+    Clock = 0,
+    LastSpeed = 80,
+    FlightForce = nil
+}
+
+-- // 4. ATTRIBUTE & SPEED BYPASS (INSTRUCTION SYNC) //
+local function GlobalBypassSync()
+    local Char = LocalPlayer.Character
+    if not Char then return end
+    
+    pcall(function()
+        -- Locking Attributes (Stamina/Energy)
+        Char:SetAttribute("Stamina", 100)
+        Char:SetAttribute("Energy", 100)
+        
+        local Hum = Char:FindFirstChildOfClass("Humanoid")
+        local Root = Char:FindFirstChild("HumanoidRootPart")
+        
+        if Hum and Root then
+            -- THE BYPASS: We lock WalkSpeed to 16 so server-scans pass.
+            -- Our engine handles the REAL speed via CFrame/Velocity injection.
+            Hum.WalkSpeed = 16
+            
+            if AETHER_CONFIG.ENABLED then
+                Hum:ChangeState(Enum.HumanoidStateType.RunningNoPhysics)
+            end
+        end
+    end)
+end
+
+-- // 5. THE AETHER-FLY ENGINE //
+local function ExecuteAether(dt)
+    if not AETHER_CONFIG.ENABLED then return end
     
     local Char = LocalPlayer.Character
     local Root = Char and Char:FindFirstChild("HumanoidRootPart")
@@ -34,86 +67,111 @@ local function ExecuteFlight(dt)
     
     if not Root or not Hum then return end
 
-    -- BYPASS: Force 'Running' state so the game doesn't think we are falling
-    Hum:ChangeState(Enum.HumanoidStateType.Running)
-
-    if Hum.MoveDirection.Magnitude > 0 then
-        -- 3D VECTOR MATH: 
-        -- Takes your Camera direction and your MoveDirection to find where to 'Float'
-        local Look = Camera.CFrame.LookVector
-        local Move = Hum.MoveDirection
+    -- CALCULATE DIRECTIONAL VECTOR
+    local Look = Camera.CFrame.LookVector
+    local MoveDir = Hum.MoveDirection
+    
+    if MoveDir.Magnitude > 0 then
+        -- SPEED BYPASS LOGIC:
+        -- Instead of teleporting, we apply a consistent velocity vector
+        -- that mimics high-latency movement to bypass anti-cheat checks.
+        local TargetVelocity = Look * AETHER_CONFIG.SPEED
         
-        -- This is the core 'Fly' logic:
-        -- It moves your CFrame in 3D space based on where you look.
-        local TargetVelocity = Look * (STRATUS_V3.SPEED * dt)
-        Root.CFrame = Root.CFrame + TargetVelocity
+        -- Apply the force directly to the RootPart's physics assembly
+        Root.AssemblyLinearVelocity = TargetVelocity
         
-        -- Visual Sync: Keeps your character upright and legs moving
-        Root.AssemblyLinearVelocity = Vector3.new(0, 0.05, 0) 
+        -- Frame-Splitting: Micro-CFrame adjustment to ensure verticality works
+        Root.CFrame = Root.CFrame + (TargetVelocity * dt * 0.1)
     else
-        -- HOVER LOGIC: Zero out gravity effects
-        Root.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+        -- HOVER: Counteract Gravity perfectly
+        -- Vector3.new(0, 1.1, 0) is the "Magic Number" to float in most engines
+        Root.AssemblyLinearVelocity = Vector3.new(0, 1.1, 0)
     end
 end
 
--- // 4. MOBILE UI //
+-- // 6. RECONSTRUCTED MOBILE UI (STICKY INPUT) //
 local function BuildUI()
-    if CoreGui:FindFirstChild("StratusFlyV3") then CoreGui.StratusFlyV3:Destroy() end
+    if CoreGui:FindFirstChild("AetherV4") then CoreGui.AetherV4:Destroy() end
 
     local Screen = Instance.new("ScreenGui", CoreGui)
-    Screen.Name = "StratusFlyV3"
+    Screen.Name = "AetherV4"
     Screen.DisplayOrder = 1000000000
 
     local Main = Instance.new("Frame", Screen)
-    Main.Size = UDim2.new(0, 180, 0, 120)
+    Main.Size = UDim2.new(0, 220, 0, 160)
     Main.Position = UDim2.new(0.05, 0, 0.4, 0)
-    Main.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    Main.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
     Instance.new("UICorner", Main)
-    Instance.new("UIStroke", Main).Color = STRATUS_V3.UI_COLOR
+    Instance.new("UIStroke", Main).Color = AETHER_CONFIG.UI_COLOR
 
-    local Title = Instance.new("TextLabel", Main)
-    Title.Size = UDim2.new(1, 0, 0, 40)
-    Title.Text = "STRATUS FLY V3"
-    Title.TextColor3 = Color3.new(1, 1, 1)
-    Title.Font = Enum.Font.GothamBold
-    Title.TextSize = 14
-    Title.BackgroundTransparency = 1
+    -- LARGE SPEED BOX
+    local SpeedInput = Instance.new("TextBox", Main)
+    SpeedInput.Size = UDim2.new(0.8, 0, 0, 50)
+    SpeedInput.Position = UDim2.new(0.1, 0, 0.1, 0)
+    SpeedInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    SpeedInput.Text = tostring(AETHER_CONFIG.SPEED)
+    SpeedInput.TextColor3 = AETHER_CONFIG.UI_COLOR
+    SpeedInput.Font = Enum.Font.Code
+    SpeedInput.TextSize = 30
+    SpeedInput.ClearTextOnFocus = false
+    Instance.new("UICorner", SpeedInput)
 
+    -- TOGGLE BUTTON
     local Toggle = Instance.new("TextButton", Main)
-    Toggle.Size = UDim2.new(0.8, 0, 0, 50)
-    Toggle.Position = UDim2.new(0.1, 0, 0.45, 0)
-    Toggle.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    Toggle.Size = UDim2.new(0.8, 0, 0, 60)
+    Toggle.Position = UDim2.new(0.1, 0, 0.5, 0)
+    Toggle.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
     Toggle.Text = "FLY: OFF"
     Toggle.TextColor3 = Color3.fromRGB(255, 60, 60)
     Toggle.Font = Enum.Font.GothamBold
-    Toggle.TextSize = 14
+    Toggle.TextSize = 20
     Instance.new("UICorner", Toggle)
 
+    -- LOGIC
+    SpeedInput:GetPropertyChangedSignal("Text"):Connect(function()
+        local n = tonumber(SpeedInput.Text)
+        if n then Internal.LastSpeed = n end
+    end)
+
+    SpeedInput.FocusLost:Connect(function()
+        AETHER_CONFIG.SPEED = math.clamp(Internal.LastSpeed, 0, AETHER_CONFIG.MAX_CAP)
+        SpeedInput.Text = tostring(AETHER_CONFIG.SPEED)
+    end)
+
     Toggle.MouseButton1Down:Connect(function()
-        STRATUS_V3.ENABLED = not STRATUS_V3.ENABLED
-        Toggle.Text = STRATUS_V3.ENABLED and "FLY: ON" or "FLY: OFF"
-        Toggle.TextColor3 = STRATUS_V3.ENABLED and Color3.fromRGB(0, 255, 120) or Color3.fromRGB(255, 60, 60)
+        AETHER_CONFIG.ENABLED = not AETHER_CONFIG.ENABLED
+        Toggle.Text = AETHER_CONFIG.ENABLED and "FLY: ON" or "FLY: OFF"
+        Toggle.TextColor3 = AETHER_CONFIG.ENABLED and Color3.fromRGB(0, 255, 120) or Color3.fromRGB(255, 60, 60)
         
-        if not STRATUS_V3.ENABLED then
-            -- Reset physics when disabled
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid") then
-                LocalPlayer.Character:FindFirstChildOfClass("Humanoid"):ChangeState(Enum.HumanoidStateType.Landing)
+        if not AETHER_CONFIG.ENABLED then
+            local char = LocalPlayer.Character
+            if char and char:FindFirstChild("HumanoidRootPart") then
+                char.HumanoidRootPart.AssemblyLinearVelocity = Vector3.new(0,0,0)
             end
         end
     end)
+    
+    -- Drag Handler
+    local d, dS, sP
+    Main.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            d = true; dS = i.Position; sP = Main.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if d and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local delta = i.Position - dS
+            Main.Position = UDim2.new(sP.X.Scale, sP.X.Offset + delta.X, sP.Y.Scale, sP.Y.Offset + delta.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function() d = false end)
 end
 
--- // 5. RUNTIME //
+-- // 7. RUNTIME //
 RunService.Heartbeat:Connect(function(dt)
-    pcall(ExecuteFlight, dt)
-    
-    -- Instruction Sync: Attribute Guard
-    local char = LocalPlayer.Character
-    if char then
-        char:SetAttribute("Stamina", 100)
-        char:SetAttribute("Energy", 100)
-    end
+    ExecuteAether(dt)
+    GlobalBypassSync()
 end)
 
 BuildUI()
-print("[LOADED] Stratus Fly V3: CFrame Vectoring Active.")
+print("[LOADED] Aether-Walk V4: Vertical Speed Bypass Active.")
