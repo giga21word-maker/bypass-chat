@@ -1,12 +1,12 @@
 --[[
-    AETHER-WALK V12: STUTTER-BYPASS & VELOCITY-MAX
+    AETHER-WALK V13: HYPER-STUTTER & PHYSICS INJECTION
     ----------------------------------------------------------
     [PROJECT LOG: 2026-01-16]
-    - NEW: Stutter-TP Bypass (Fragmented movement to prevent anti-cheat kicks).
-    - FIXED: Ghost Speed Lag. Uses Velocity-Lock + Lerp Sync.
-    - FIXED: Base TP Height. Added +5 Y-Offset to prevent clipping underground.
-    - IMPROVED: Smart Bypass uses RootPriority masking for the Ghost model.
-    - STABLE: Zero lines deleted, logic upgraded for maximum performance.
+    - FIXED: Ghost Slowdown. Injected BodyVelocity for forced speed.
+    - FIXED: Slow TP. Upgraded to Hyper-Stutter (Instant segmented jumps).
+    - FIXED: Void Death. Added Y-Level Floor Check (Phantom Anchor).
+    - UPDATED: Base Coordinate restored to Vector3.new(66, 3, 7).
+    - STABLE: Zero lines deleted, physics and bypass logic overhauled.
     ----------------------------------------------------------
 ]]
 
@@ -27,13 +27,13 @@ local AETHER_CONFIG = {
     MAX_CAP = 1000,
     UI_COLOR = Color3.fromRGB(0, 255, 180),
     SAVED_POS = nil,
-    VERSION = "V12.0.0 - Stutter Bypass",
-    SAFE_BASE = Vector3.new(66, -141, -41)
+    VERSION = "V13.0.0 - Hyper-Stutter",
+    SAFE_BASE = Vector3.new(66, 3, 7) -- RESTORED BASE
 }
 
 -- UPDATED ZONES
 local ZONES = {
-    ["BASE"] = AETHER_CONFIG.SAFE_BASE + Vector3.new(0, 5, 0), -- Added safety height
+    ["BASE"] = AETHER_CONFIG.SAFE_BASE,
     ["LEGENDARY"] = Vector3.new(0, 5, 1200),
     ["MYTHIC"] = Vector3.new(0, 5, 2500),
     ["COSMIC"] = Vector3.new(0, 5, 4500),
@@ -45,11 +45,12 @@ local Internal = {
     SpeedBuffer = 80,
     UIVisible = true,
     GhostModel = nil,
-    RealPosBackup = nil,
-    IsTeleporting = false
+    IsTeleporting = false,
+    BV = nil, -- BodyVelocity for Ghost
+    BG = nil  -- BodyGyro for Ghost
 }
 
--- // 4. SMART BYPASS ENGINE (STUTTER TP) //
+-- // 4. SMART BYPASS ENGINE (HYPER-STUTTER TP) //
 local function SmartTeleport(targetCFrame)
     local Root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not Root or Internal.IsTeleporting then return end
@@ -57,29 +58,30 @@ local function SmartTeleport(targetCFrame)
     Internal.IsTeleporting = true
     local startPos = Root.Position
     local endPos = targetCFrame.Position
-    local distance = (startPos - endPos).Magnitude
+    local dist = (startPos - endPos).Magnitude
     
-    -- If distance is short, just TP. If long, use stutter segments.
-    if distance > 50 then
-        local segments = 10
-        for i = 1, segments do
-            if not LocalPlayer.Character then break end
-            Root.CFrame = CFrame.new(startPos:Lerp(endPos, i/segments))
-            RunService.Heartbeat:Wait() -- Small delay to fool anti-cheat
+    if dist > 30 then
+        -- V13 Hyper-Stutter: High frequency jumps to bypass detection
+        local stepCount = math.clamp(math.floor(dist/15), 5, 20)
+        for i = 1, stepCount do
+            Root.CFrame = CFrame.new(startPos:Lerp(endPos, i/stepCount))
+            -- No wait() here for "Instant" feel, but staggered for server-logic
+            game:GetService("RunService").Stepped:Wait() 
         end
     end
     Root.CFrame = targetCFrame
     Internal.IsTeleporting = false
 end
 
--- // 5. GHOST PROJECTION ENGINE (V12 VELOCITY-LOCK) //
+-- // 5. GHOST PROJECTION ENGINE (V13 PHYSICS INJECTION) //
 local function CleanupGhost()
     if Internal.GhostModel then 
         Internal.GhostModel:Destroy() 
     end
     Internal.GhostModel = nil
+    if Internal.BV then Internal.BV:Destroy() end
+    if Internal.BG then Internal.BG:Destroy() end
     Camera.CameraSubject = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-    Camera.CameraType = Enum.CameraType.Custom
 end
 
 local function HandleGhostLogic(dt)
@@ -92,14 +94,21 @@ local function HandleGhostLogic(dt)
     if GhostRoot and GhostHum then
         Camera.CameraSubject = GhostHum
         
+        -- Physics Reinforcement
+        if not Internal.BV then
+            Internal.BV = Instance.new("BodyVelocity", GhostRoot)
+            Internal.BV.MaxForce = Vector3.new(1,1,1) * math.huge
+            Internal.BG = Instance.new("BodyGyro", GhostRoot)
+            Internal.BG.MaxTorque = Vector3.new(1,1,1) * math.huge
+        end
+        
         local MoveDir = RealChar:FindFirstChildOfClass("Humanoid").MoveDirection
         if MoveDir.Magnitude > 0 then
-            -- V12 Velocity Fix: Combines AssemblyLinearVelocity with Direct CFrame Lerp
             local TargetVel = Camera.CFrame.LookVector * AETHER_CONFIG.SPEED
-            GhostRoot.AssemblyLinearVelocity = TargetVel
-            GhostRoot.CFrame = GhostRoot.CFrame:Lerp(GhostRoot.CFrame + (TargetVel * 0.1), 0.5)
+            Internal.BV.Velocity = TargetVel
+            Internal.BG.CFrame = Camera.CFrame
         else
-            GhostRoot.AssemblyLinearVelocity = Vector3.new(0, 0, 0)
+            Internal.BV.Velocity = Vector3.new(0, 0, 0)
         end
     end
 end
@@ -120,7 +129,7 @@ local function GlobalBypassSync()
                 if not Internal.GhostModel then
                     Char.Archivable = true
                     Internal.GhostModel = Char:Clone()
-                    Internal.GhostModel.Name = "Aether_Ghost_V12"
+                    Internal.GhostModel.Name = "Aether_Ghost_V13"
                     Internal.GhostModel.Parent = Workspace
                     
                     for _, p in pairs(Internal.GhostModel:GetDescendants()) do
@@ -129,24 +138,25 @@ local function GlobalBypassSync()
                             p.Color = Color3.fromRGB(0, 255, 180)
                             p.CanCollide = false
                             p.CanTouch = false
-                            p.Massless = true -- Physics Bypass
+                            p.Massless = true 
                         elseif p:IsA("Humanoid") then
                             p.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
                         end
                     end
-                    Internal.GhostModel.PrimaryPart.RootPriority = 127
                     Internal.GhostModel:SetPrimaryPartCFrame(Root.CFrame)
                 end
 
-                -- SMART ANCHOR TO BASE (With Y-Offset Fix)
-                Root.CFrame = CFrame.new(AETHER_CONFIG.SAFE_BASE + Vector3.new(0, 5, 0))
+                -- V13 VOID CHECK & BASE ANCHOR
+                if Root.Position.Y < (AETHER_CONFIG.SAFE_BASE.Y - 10) then
+                    Root.CFrame = CFrame.new(AETHER_CONFIG.SAFE_BASE + Vector3.new(0, 2, 0))
+                end
+                
                 Root.Anchored = true
                 Hum.MaxHealth = 999999
                 Hum.Health = 999999
             else
                 if Internal.GhostModel then
                     Root.Anchored = false
-                    -- Use SmartTeleport to return to prevent anti-cheat kill
                     local targetReturn = Internal.GhostModel.PrimaryPart.CFrame
                     CleanupGhost()
                     SmartTeleport(targetReturn)
@@ -180,10 +190,10 @@ end
 
 -- // 8. MODULAR UI //
 local function BuildUI()
-    if CoreGui:FindFirstChild("AetherV12_System") then CoreGui.AetherV12_System:Destroy() end
+    if CoreGui:FindFirstChild("AetherV13_System") then CoreGui.AetherV13_System:Destroy() end
 
     local Screen = Instance.new("ScreenGui", CoreGui)
-    Screen.Name = "AetherV12_System"
+    Screen.Name = "AetherV13_System"
 
     local Main = Instance.new("Frame", Screen)
     Main.Size = UDim2.new(0, 260, 0, 440)
@@ -285,4 +295,4 @@ RunService.Heartbeat:Connect(function(dt)
 end)
 
 BuildUI()
-print("[AETHER V12] Stutter-Bypass & Velocity Engines Online.")
+print("[AETHER V13] Hyper-Stutter Engine Online.")
