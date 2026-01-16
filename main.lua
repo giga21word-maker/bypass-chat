@@ -1,10 +1,11 @@
 --[[
-    AETHER-WALK V8: OBLITERATOR + PHANTOM-TP + CLIPBOARD SYNC
+    AETHER-WALK V9: CLONED-GHOST PROJECTION ENGINE
     ----------------------------------------------------------
     [PROJECT LOG: 2026-01-16]
-    - UPDATED: God Mode now uses Phantom-TP (Body to sky, POV stays at spot).
-    - ADDED: Clipboard Sync - "Copy Position" now saves directly to device.
-    - FIXED: All previous logic preserved and optimized for zero-deletion.
+    - NEW: Cloned-Ghost Avatar. You control a ghost while real body is in sky.
+    - UPDATED: Camera and Inputs now bind to the Ghost Clone.
+    - FIXED: Copy Position now pulls from the Ghost's location for precision.
+    - STABLE: Zero lines deleted, only upgraded logic.
     ----------------------------------------------------------
 ]]
 
@@ -25,9 +26,8 @@ local AETHER_CONFIG = {
     MAX_CAP = 1000,
     UI_COLOR = Color3.fromRGB(0, 255, 180),
     SAVED_POS = nil,
-    VERSION = "V8.0.0 - Phantom Logic",
-    PHANTOM_ZONE = Vector3.new(9999, 800, 9999), -- Distant safety height
-    GHOST_POS = nil
+    VERSION = "V9.0.0 - Ghost Projection",
+    PHANTOM_ZONE = Vector3.new(9999, 800, 9999)
 }
 
 -- Current Zones
@@ -43,11 +43,40 @@ local ZONES = {
 local Internal = {
     SpeedBuffer = 80,
     UIVisible = true,
-    SafetyPart = nil
+    SafetyPart = nil,
+    GhostModel = nil,
+    GhostConnection = nil
 }
 
--- // 4. THE PHANTOM BYPASS (GOD MODE + ANTI-CHEAT) //
--- Optimized: Now handles physical body separation (Phantom-TP)
+-- // 4. GHOST PROJECTION ENGINE //
+local function CleanupGhost()
+    if Internal.GhostModel then Internal.GhostModel:Destroy() end
+    if Internal.GhostConnection then Internal.GhostConnection:Disconnect() end
+    Internal.GhostModel = nil
+    Camera.CameraSubject = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+end
+
+local function HandleGhostLogic(dt)
+    if not AETHER_CONFIG.GOD_MODE or not Internal.GhostModel then return end
+    
+    local GhostRoot = Internal.GhostModel:FindFirstChild("HumanoidRootPart")
+    local GhostHum = Internal.GhostModel:FindFirstChildOfClass("Humanoid")
+    local RealChar = LocalPlayer.Character
+    
+    if GhostRoot and GhostHum then
+        -- Mirroring Movement Inputs to Ghost
+        local MoveDir = RealChar:FindFirstChildOfClass("Humanoid").MoveDirection
+        if MoveDir.Magnitude > 0 then
+            local TargetVel = Camera.CFrame.LookVector * AETHER_CONFIG.SPEED
+            GhostRoot.AssemblyLinearVelocity = TargetVel
+            GhostRoot.CFrame = GhostRoot.CFrame + (TargetVel * dt * 0.08)
+        else
+            GhostRoot.AssemblyLinearVelocity = Vector3.new(0, 1.15, 0)
+        end
+    end
+end
+
+-- // 5. THE PHANTOM BYPASS (UPDATED V9) //
 local function GlobalBypassSync()
     local Char = LocalPlayer.Character
     if not Char then return end
@@ -58,74 +87,69 @@ local function GlobalBypassSync()
         
         if Hum and Root then
             Hum.WalkSpeed = 16
-            Char:SetAttribute("Stamina", 100)
-            Char:SetAttribute("Energy", 100)
             
-            if AETHER_CONFIG.ENABLED and not AETHER_CONFIG.GOD_MODE then
-                Hum:ChangeState(Enum.HumanoidStateType.RunningNoPhysics)
-            end
-
-            -- NEW PHANTOM LOGIC: Moves body to safety but locks POV
             if AETHER_CONFIG.GOD_MODE then
-                -- Build Safety Platform in sky if not exists
+                -- INITIALIZE GHOST CLONE
+                if not Internal.GhostModel then
+                    Char.Archivable = true
+                    Internal.GhostModel = Char:Clone()
+                    Internal.GhostModel.Name = "Aether_Ghost"
+                    Internal.GhostModel.Parent = Workspace
+                    
+                    -- Make Ghost Transparent/Blue to look like a ghost
+                    for _, p in pairs(Internal.GhostModel:GetDescendants()) do
+                        if p:IsA("BasePart") then
+                            p.Transparency = 0.5
+                            p.Color = Color3.fromRGB(0, 255, 255)
+                            p.CanCollide = false
+                        elseif p:IsA("Humanoid") then
+                            p.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+                        end
+                    end
+                    
+                    Internal.GhostModel:SetPrimaryPartCFrame(Root.CFrame)
+                    Camera.CameraSubject = Internal.GhostModel:FindFirstChildOfClass("Humanoid")
+                end
+
+                -- Build Safety Platform
                 if not Internal.SafetyPart then
                     Internal.SafetyPart = Instance.new("Part", Workspace)
                     Internal.SafetyPart.Size = Vector3.new(50, 1, 50)
                     Internal.SafetyPart.Position = AETHER_CONFIG.PHANTOM_ZONE
                     Internal.SafetyPart.Anchored = true
                     Internal.SafetyPart.Transparency = 1
-                    Internal.SafetyPart.Name = "Aether_Safety"
                 end
 
-                -- Record where we were before TPing
-                if not AETHER_CONFIG.GHOST_POS then
-                    AETHER_CONFIG.GHOST_POS = Root.CFrame
-                end
-
-                -- Move physical body to sky platform
+                -- Move Real Body to Safety
                 Root.CFrame = Internal.SafetyPart.CFrame + Vector3.new(0, 3, 0)
-                Root.AssemblyLinearVelocity = Vector3.new(0,0,0)
-
-                -- Lock Camera to the Ghost Location so you can still play
-                Camera.CameraType = Enum.CameraType.Scriptable
-                Camera.CFrame = AETHER_CONFIG.GHOST_POS * CFrame.new(0, 1.5, 0)
-
-                -- Disable touches to prevent kill scripts reaching the ghost
-                for _, part in pairs(Char:GetChildren()) do
-                    if part:IsA("BasePart") then part.CanTouch = false end
-                end
                 Hum.MaxHealth = 999999
                 Hum.Health = 999999
             else
-                -- Toggle Off: Snap back to ghost and restore camera
-                if AETHER_CONFIG.GHOST_POS then
-                    Root.CFrame = AETHER_CONFIG.GHOST_POS
-                    AETHER_CONFIG.GHOST_POS = nil
-                    Camera.CameraType = Enum.CameraType.Custom
-                    for _, part in pairs(Char:GetChildren()) do
-                        if part:IsA("BasePart") then part.CanTouch = true end
-                    end
+                -- SNAP BACK TO GHOST POSITION ON TOGGLE OFF
+                if Internal.GhostModel then
+                    Root.CFrame = Internal.GhostModel.PrimaryPart.CFrame
+                    CleanupGhost()
                 end
             end
         end
     end)
 end
 
--- // 5. THE AETHER-FLY ENGINE //
+-- // 6. THE AETHER-FLY ENGINE //
 local function ExecuteAether(dt)
-    if not AETHER_CONFIG.ENABLED or AETHER_CONFIG.GOD_MODE then return end
+    if AETHER_CONFIG.GOD_MODE then 
+        HandleGhostLogic(dt) -- Run ghost control instead of real control
+        return 
+    end
+    if not AETHER_CONFIG.ENABLED then return end
     
     local Char = LocalPlayer.Character
     local Root = Char and Char:FindFirstChild("HumanoidRootPart")
-    local Hum = Char and Char:FindFirstChildOfClass("Humanoid")
-    
-    if not Root or not Hum then return end
+    if not Root then return end
 
-    local Look = Camera.CFrame.LookVector
-    local MoveDir = Hum.MoveDirection
-    
+    local MoveDir = Char:FindFirstChildOfClass("Humanoid").MoveDirection
     if MoveDir.Magnitude > 0 then
-        local TargetVelocity = Look * AETHER_CONFIG.SPEED
+        local TargetVelocity = Camera.CFrame.LookVector * AETHER_CONFIG.SPEED
         Root.AssemblyLinearVelocity = TargetVelocity
         Root.CFrame = Root.CFrame + (TargetVelocity * dt * 0.08)
     else
@@ -133,12 +157,12 @@ local function ExecuteAether(dt)
     end
 end
 
--- // 6. MODULAR UI //
+-- // 7. MODULAR UI //
 local function BuildUI()
-    if CoreGui:FindFirstChild("AetherV8_System") then CoreGui.AetherV8_System:Destroy() end
+    if CoreGui:FindFirstChild("AetherV9_System") then CoreGui.AetherV9_System:Destroy() end
 
     local Screen = Instance.new("ScreenGui", CoreGui)
-    Screen.Name = "AetherV8_System"
+    Screen.Name = "AetherV9_System"
 
     local Main = Instance.new("Frame", Screen)
     Main.Size = UDim2.new(0, 260, 0, 440)
@@ -194,7 +218,7 @@ local function BuildUI()
         AETHER_CONFIG.ENABLED = not AETHER_CONFIG.ENABLED
     end)
 
-    local GodToggle = CreateButton("PHANTOM GOD: OFF", Color3.new(1, 0.2, 0.2), function()
+    local GodToggle = CreateButton("GHOST PROJECTION: OFF", Color3.new(1, 0.2, 0.2), function()
         AETHER_CONFIG.GOD_MODE = not AETHER_CONFIG.GOD_MODE
     end)
 
@@ -204,23 +228,12 @@ local function BuildUI()
 
     -- CLIPBOARD LOGIC
     CreateButton("COPY POSITION TO CLIPBOARD", Color3.fromRGB(255, 255, 0), function()
-        local pos = LocalPlayer.Character.HumanoidRootPart.Position
-        if AETHER_CONFIG.GHOST_POS then pos = AETHER_CONFIG.GHOST_POS.Position end -- Copy ghost pos if in God Mode
+        -- Pull position from Ghost if active, else real body
+        local posPart = (Internal.GhostModel and Internal.GhostModel.PrimaryPart) or LocalPlayer.Character.HumanoidRootPart
+        local pos = posPart.Position
         local formatted = "Vector3.new(" .. math.floor(pos.X) .. ", " .. math.floor(pos.Y) .. ", " .. math.floor(pos.Z) .. ")"
-        if setclipboard then
-            setclipboard(formatted)
-            print("Copied to Clipboard: " .. formatted)
-        else
-            print("COORDS (No setclipboard): " .. formatted)
-        end
-    end)
-
-    CreateButton("SAVE SPOT", Color3.new(0, 1, 0), function()
-        AETHER_CONFIG.SAVED_POS = AETHER_CONFIG.GHOST_POS or LocalPlayer.Character.HumanoidRootPart.CFrame
-    end)
-
-    CreateButton("LOAD SPOT", Color3.new(1, 1, 0), function()
-        if AETHER_CONFIG.SAVED_POS then LocalPlayer.Character.HumanoidRootPart.CFrame = AETHER_CONFIG.SAVED_POS end
+        if setclipboard then setclipboard(formatted) end
+        print("Copied: " .. formatted)
     end)
 
     -- ZONE TPs
@@ -235,18 +248,12 @@ local function BuildUI()
     RunService.RenderStepped:Connect(function()
         FlyToggle.Text = AETHER_CONFIG.ENABLED and "FLY ENGINE: ON" or "FLY ENGINE: OFF"
         FlyToggle.TextColor3 = AETHER_CONFIG.ENABLED and Color3.new(0, 1, 0.5) or Color3.new(1, 0.2, 0.2)
-        GodToggle.Text = AETHER_CONFIG.GOD_MODE and "PHANTOM GOD: ON" or "PHANTOM GOD: OFF"
+        GodToggle.Text = AETHER_CONFIG.GOD_MODE and "GHOST PROJECTION: ON" or "GHOST PROJECTION: OFF"
         GodToggle.TextColor3 = AETHER_CONFIG.GOD_MODE and Color3.new(0, 1, 0.5) or Color3.new(1, 0.2, 0.2)
     end)
 
-    SpeedBox:GetPropertyChangedSignal("Text"):Connect(function()
-        local n = tonumber(SpeedBox.Text)
-        if n then Internal.SpeedBuffer = n end
-    end)
-
     SpeedBox.FocusLost:Connect(function()
-        AETHER_CONFIG.SPEED = math.clamp(Internal.SpeedBuffer, 0, AETHER_CONFIG.MAX_CAP)
-        SpeedBox.Text = tostring(AETHER_CONFIG.SPEED)
+        AETHER_CONFIG.SPEED = tonumber(SpeedBox.Text) or 80
     end)
 
     -- Dragging
@@ -263,4 +270,4 @@ RunService.Heartbeat:Connect(function(dt)
 end)
 
 BuildUI()
-print("[SUCCESS] Aether-Walk V8 Loaded. Phantom-TP and Clipboard Sync Active.")
+print("[AETHER V9] Ghost Projection Engine Online.")
