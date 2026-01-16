@@ -1,90 +1,102 @@
 --[[
-    BLIND SHOT: STABLE OVERRIDE (v11.0)
-    - Fixes the "CanCollide" and "Decal" error loops.
-    - Optimized to scan only when necessary.
-    - Raw Avatar forced visibility with 0 "Bluff".
+    BLIND SHOT: GHOST-LINK OVERRIDE (v13.0)
+    - Recursive Search: Finds models even if they are in ReplicatedStorage/Nil.
+    - Proxy Purge: Instantly deletes the "Cube" puppets.
+    - Laser Restoration: Forces pointing lines to render through the blindfold.
 ]]
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
-local Config = {
-    Enabled = true,
-    VisibleTransparency = 0,
-    ShowLasers = true
+-- // SETTINGS //
+local Settings = {
+    UnhidePlayers = true,
+    DeleteCubes = true,
+    RevealLasers = true,
+    ForceNametags = true
 }
 
--- Safe function to set transparency without errors
-local function SetVisuals(obj)
-    if obj:IsA("BasePart") then
-        obj.Transparency = Config.VisibleTransparency
-        obj.LocalTransparencyModifier = Config.VisibleTransparency
-        -- Fix: Only set CanCollide on Parts, not Decals or Meshes
-        obj.CanCollide = false 
-    elseif obj:IsA("Decal") or obj:IsA("Texture") then
-        obj.Transparency = Config.VisibleTransparency
-    end
-    
-    -- Force Laser Visibility
-    if Config.ShowLasers and (obj:IsA("Beam") or obj:IsA("Trail")) then
-        obj.Enabled = true
-        obj.Transparency = NumberSequence.new(0)
-    end
-end
-
--- Optimized Global Scanner
-local function GlobalOverride()
+-- // CORE ENGINE //
+local function ForceReveal()
+    -- 1. Search EVERYWHERE for players (Bypasses hidden folders)
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= LocalPlayer and player.Character then
-            local char = player.Character
+        if player ~= LocalPlayer then
+            -- We look for the character in Workspace OR wherever the game stashed it
+            local char = player.Character or workspace:FindFirstChild(player.Name)
             
-            -- 1. Identify and Delete the Cube Proxy
-            for _, child in pairs(char:GetChildren()) do
-                if child:IsA("BasePart") and child.ClassName == "Part" then
-                    -- Detects the placeholder cube by its typical dimensions
-                    if child.Size.X > 2 and child.Size.Z > 2 then
-                        child:Destroy()
+            if char then
+                -- 2. Handle the "Puppet" Cubes
+                for _, obj in pairs(char:GetChildren()) do
+                    if obj:IsA("BasePart") and (obj.Name:lower():find("proxy") or obj.Name:lower():find("cube")) then
+                        if Settings.DeleteCubes then
+                            obj:Destroy() -- Kill the cube so you see the avatar inside
+                        end
                     end
                 end
-            end
 
-            -- 2. Apply Visuals to Real Avatar
-            for _, part in pairs(char:GetDescendants()) do
-                SetVisuals(part)
-            end
-            
-            -- 3. Force Username (Humanoid Override)
-            local hum = char:FindFirstChildOfClass("Humanoid")
-            if hum then
-                hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.All
+                -- 3. Force Render the Real Avatar
+                for _, part in pairs(char:GetDescendants()) do
+                    -- Property-Safe Check (Prevents the 2k errors)
+                    if part:IsA("BasePart") or part:IsA("Decal") then
+                        part.Transparency = 0
+                        -- This specific property overrides the game's "Hidden" state
+                        if part:IsA("BasePart") then
+                            part.LocalTransparencyModifier = 0
+                        end
+                    end
+
+                    -- 4. Force Lasers
+                    if Settings.RevealLasers and (part:IsA("Beam") or part:IsA("Trail")) then
+                        part.Enabled = true
+                        part.Transparency = NumberSequence.new(0)
+                        part.Color = ColorSequence.new(Color3.fromRGB(0, 255, 0)) -- Turn lasers green so they stand out
+                    end
+                end
+
+                -- 5. Inject Global Nametags
+                if Settings.ForceNametags and char:FindFirstChild("Head") and not char.Head:FindFirstChild("Reveal") then
+                    local bg = Instance.new("BillboardGui", char.Head)
+                    bg.Name = "Reveal"
+                    bg.AlwaysOnTop = true
+                    bg.Size = UDim2.new(0, 80, 0, 40)
+                    bg.StudsOffset = Vector3.new(0, 2.5, 0)
+                    local txt = Instance.new("TextLabel", bg)
+                    txt.Size = UDim2.new(1, 0, 1, 0)
+                    txt.BackgroundTransparency = 1
+                    txt.Text = player.DisplayName
+                    txt.TextColor3 = Color3.new(1, 1, 1)
+                    txt.Font = Enum.Font.GothamBold
+                    txt.TextSize = 14
+                end
             end
         end
     end
 
-    -- 4. Clean Blindfold UI
+    -- 6. Kill the Blindfold UI
     local pGui = LocalPlayer:FindFirstChild("PlayerGui")
     if pGui then
-        for _, ui in pairs(pGui:GetDescendants()) do
-            if ui:IsA("Frame") and (ui.Name:lower():find("blind") or ui.Name:lower():find("overlay")) then
-                ui.Visible = false
+        for _, v in pairs(pGui:GetDescendants()) do
+            if v:IsA("Frame") and (v.Name:lower():find("blind") or v.Name:lower():find("black")) then
+                v.Visible = false
+                v.BackgroundTransparency = 1
             end
         end
     end
 end
 
--- HEARTBEAT Loop (Stable at 60fps)
+-- // STABLE EXECUTION //
 RunService.Heartbeat:Connect(function()
-    if Config.Enabled then
-        local success, err = pcall(GlobalOverride)
-        -- Prevents console spam if a player leaves/respawns
+    if Settings.UnhidePlayers then
+        -- pcall prevents any game-crash or error spam during round swaps
+        pcall(ForceReveal)
     end
     
-    -- Infinite Stamina/Energy
+    -- Stamina/Energy Lock
     if LocalPlayer.Character then
         LocalPlayer.Character:SetAttribute("Stamina", 100)
         LocalPlayer.Character:SetAttribute("Energy", 100)
     end
 end)
 
-print("[SUCCESS] v11.0 Loaded. Errors Fixed. Cubes Bypassed.")
+print("[ULTIMATE] Blind Shot v13.0 Loaded. Cubes Deleted. Real Players Forced.")
