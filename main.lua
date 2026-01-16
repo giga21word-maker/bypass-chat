@@ -1,160 +1,179 @@
 --[[
-    PROJECT FORSAKEN: ETERNAL (v1.0)
-    Infinite Stamina & Anti-Exhaustion Engine
+    PROJECT FORSAKEN: ETERNAL V2 (EXTREME)
+    Engineered for the 2026 Forsaken Stamina Overhaul
     
-    [FEATURES]
-    - Dynamic Attribute Locking (Bypasses local drain)
-    - Anti-Exhaustion State Freeze
-    - Multi-Method Support (Handles both Attributes and ObjectValues)
-    - Optimized RunService Heartbeat
+    [SYSTEMS]
+    - Meta-Index Hooking: Spoofs stamina values to local scripts.
+    - Constant Velocity Injection: Prevents "Exhaustion" slowdown.
+    - Attribute Shadowing: Prevents the server from setting "Exhausted" to true.
+    - Mobile Adaptive UI: Draggable and toggleable.
 ]]
 
--- // 1. INITIALIZATION //
-if not game:IsLoaded() then game.Loaded:Wait() end
+-- // 1. CORE SERVICES //
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
-local LocalPlayer = Players.LocalPlayer
+local HttpService = game:GetService("HttpService")
+local StarterGui = game:GetService("StarterGui")
 
--- // 2. CONFIGURATION //
+local LocalPlayer = Players.LocalPlayer
+local UI_NAME = "EternalV2_" .. HttpService:GenerateGUID(false)
+
+-- // 2. SYSTEM SETTINGS //
 local Settings = {
     Enabled = true,
-    LockValue = 100, -- Standard Max Stamina
-    Methods = {"Attribute", "ValueObject", "DataFolder"},
-    ToggleKey = Enum.KeyCode.RightShift -- Shift is for sprint, so RightShift is safe for toggle
+    SpeedHack = false,
+    SprintSpeed = 24, -- Standard Forsaken sprint is ~21-22
+    WalkSpeed = 16,
+    ForceStamina = 999999,
+    BypassExhaustion = true
 }
 
--- // 3. CORE LOGIC ENGINE //
-local Eternal = {
-    Connection = nil,
-    Character = nil,
-    Humanoid = nil
-}
+-- // 3. METATABLE HOOKING (THE "BRAIN") //
+-- This stops the game scripts from seeing that their stamina is draining
+local function InitiateBypass()
+    local mt = getrawmetatable(game)
+    local oldIndex = mt.__index
+    local oldNewIndex = mt.__newindex
+    setreadonly(mt, false)
 
--- This function handles the actual "Infinite" logic
-function Eternal:ApplyStaminaLock()
-    if not self.Character then return end
-
-    -- METHOD A: Attributes (Most likely for Forsaken)
-    -- We set it to 100 and also ensure "MaxStamina" is locked
-    if self.Character:GetAttribute("Stamina") then
-        self.Character:SetAttribute("Stamina", Settings.LockValue)
-        
-        -- Bypass the "Exhausted" state if the game uses it
-        if self.Character:GetAttribute("Exhausted") ~= nil then
-            self.Character:SetAttribute("Exhausted", false)
+    mt.__index = newcclosure(function(t, k)
+        if Settings.Enabled and not checkcaller() then
+            -- If any script tries to check "Stamina", we tell it it's 100
+            if k == "Stamina" or k == "SprintAmount" or k == "Energy" then
+                return Settings.ForceStamina
+            end
+            -- If the game checks if we are "Exhausted", we always say No
+            if k == "Exhausted" or k == "IsTired" or k == "Tired" then
+                return false
+            end
         end
-    end
+        return oldIndex(t, k)
+    end)
 
-    -- METHOD B: Data Folder (Used in some Forsaken versions/clones)
-    local data = LocalPlayer:FindFirstChild("Data") or LocalPlayer:FindFirstChild("leaderstats")
-    if data then
-        local stam = data:FindFirstChild("Stamina")
-        if stam and stam:IsA("NumberValue") then
-            stam.Value = Settings.LockValue
+    -- This prevents the game from setting our speed to 8 when we get tired
+    mt.__newindex = newcclosure(function(t, k, v)
+        if Settings.Enabled and not checkcaller() and t:IsA("Humanoid") and k == "WalkSpeed" then
+            if v < Settings.WalkSpeed then 
+                -- If the game tries to slow us down, we ignore it
+                return oldNewIndex(t, k, Settings.WalkSpeed)
+            end
         end
-    end
+        return oldNewIndex(t, k, v)
+    end)
 
-    -- METHOD C: State Interceptor
-    -- Some versions of the game tie stamina to the Humanoid's metadata
-    if self.Humanoid then
-        if self.Humanoid:GetAttribute("Stamina") then
-            self.Humanoid:SetAttribute("Stamina", Settings.LockValue)
-        end
-    end
+    setreadonly(mt, true)
 end
+pcall(InitiateBypass)
 
--- // 4. CHARACTER MONITORING //
--- We need to re-hook the script every time you respawn
-local function OnCharacterAdded(char)
-    Eternal.Character = char
-    Eternal.Humanoid = char:WaitForChild("Humanoid")
+-- // 4. CHARACTER ENFORCEMENT //
+local Eternal = {}
+Eternal.__index = Eternal
+
+function Eternal.new()
+    local self = setmetatable({}, Eternal)
+    self.Char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    self.Hum = self.Char:WaitForChild("Humanoid")
     
-    -- Force a refresh on the attributes
-    task.wait(1)
-    if char:GetAttribute("Stamina") then
-        Settings.LockValue = char:GetAttribute("MaxStamina") or 100
-    end
+    -- Detect when character respawns
+    LocalPlayer.CharacterAdded:Connect(function(newChar)
+        self.Char = newChar
+        self.Hum = newChar:WaitForChild("Humanoid")
+        self:ApplyAttributes()
+    end)
+
+    return self
 end
 
-if LocalPlayer.Character then
-    OnCharacterAdded(LocalPlayer.Character)
-end
-LocalPlayer.CharacterAdded:Connect(OnCharacterAdded)
-
--- // 5. THE RUNTIME LOOP //
--- Using Heartbeat because it runs after physics, making it harder for the game to override us
-Eternal.Connection = RunService.Heartbeat:Connect(function()
-    if Settings.Enabled then
-        Eternal:ApplyStaminaLock()
+function Eternal:ApplyAttributes()
+    if not self.Char then return end
+    -- Force set attributes directly on the model
+    local attrs = {"Stamina", "MaxStamina", "SprintAmount", "Energy"}
+    for _, attr in pairs(attrs) do
+        self.Char:SetAttribute(attr, Settings.ForceStamina)
     end
-end)
-
--- // 6. USER INTERFACE (PC & MOBILE) //
-local Screen = Instance.new("ScreenGui", CoreGui)
-Screen.Name = "Eternal_Stamina"
-
--- Small Status Indicator
-local StatusFrame = Instance.new("Frame", Screen)
-StatusFrame.Size = UDim2.new(0, 180, 0, 40)
-StatusFrame.Position = UDim2.new(0.5, -90, 0, 50)
-StatusFrame.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-StatusFrame.BorderSizePixel = 0
-Instance.new("UICorner", StatusFrame)
-
-local StatusLabel = Instance.new("TextLabel", StatusFrame)
-StatusLabel.Size = UDim2.new(1, 0, 1, 0)
-StatusLabel.BackgroundTransparency = 1
-StatusLabel.Text = "ETERNAL STAMINA: ON"
-StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
-StatusLabel.Font = Enum.Font.GothamBold
-StatusLabel.TextSize = 14
-
--- Mobile Toggle Button
-local MobileToggle = Instance.new("TextButton", Screen)
-MobileToggle.Size = UDim2.new(0, 50, 0, 50)
-MobileToggle.Position = UDim2.new(1, -70, 0.5, -25)
-MobileToggle.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-MobileToggle.Text = "STAM"
-MobileToggle.TextColor3 = Color3.new(1,1,1)
-MobileToggle.Font = Enum.Font.GothamBold
-MobileToggle.Visible = UserInputService.TouchEnabled
-Instance.new("UICorner", MobileToggle).CornerRadius = UDim.new(1, 0)
-
--- // 7. INTERACTION HANDLERS //
-local function Toggle()
-    Settings.Enabled = not Settings.Enabled
-    if Settings.Enabled then
-        StatusLabel.Text = "ETERNAL STAMINA: ON"
-        StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 150)
-    else
-        StatusLabel.Text = "ETERNAL STAMINA: OFF"
-        StatusLabel.TextColor3 = Color3.fromRGB(255, 50, 50)
-    end
+    self.Char:SetAttribute("Exhausted", false)
+    self.Char:SetAttribute("Tired", false)
 end
 
-UserInputService.InputBegan:Connect(function(input, gpe)
-    if not gpe and input.KeyCode == Settings.ToggleKey then
-        Toggle()
-    end
-end)
+function Eternal:RunLoop()
+    RunService.Heartbeat:Connect(function()
+        if not Settings.Enabled or not self.Char or not self.Hum then return end
+        
+        -- High-frequency attribute locking
+        self.Char:SetAttribute("Stamina", Settings.ForceStamina)
+        self.Char:SetAttribute("Exhausted", false)
 
-MobileToggle.MouseButton1Click:Connect(Toggle)
+        -- Velocity Check: If we are moving and holding shift, ensure speed
+        local isMoving = self.Hum.MoveDirection.Magnitude > 0
+        local isSprinting = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) or UserInputService:IsKeyDown(Enum.KeyCode.ButtonL3)
+        
+        if isMoving and isSprinting then
+            self.Hum.WalkSpeed = Settings.SprintSpeed
+        elseif isMoving then
+            self.Hum.WalkSpeed = Settings.WalkSpeed
+        end
+    end)
+end
 
--- Dragging logic for the status bar
-local drag, ds, sp
-StatusFrame.InputBegan:Connect(function(i)
-    if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-        drag = true; ds = i.Position; sp = StatusFrame.Position
-    end
-end)
-UserInputService.InputChanged:Connect(function(i)
-    if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-        local delta = i.Position - ds
-        StatusFrame.Position = UDim2.new(sp.X.Scale, sp.X.Offset + delta.X, sp.Y.Scale, sp.Y.Offset + delta.Y)
-    end
-end)
-UserInputService.InputEnded:Connect(function() drag = false end)
+-- // 5. GUI CONSTRUCTION //
+local function CreateUI()
+    local Screen = Instance.new("ScreenGui", CoreGui)
+    Screen.Name = UI_NAME
 
-print("[ETERNAL] Forsaken Stamina Engine Loaded")
+    local Main = Instance.new("Frame", Screen)
+    Main.Size = UDim2.new(0, 220, 0, 100)
+    Main.Position = UDim2.new(0.5, -110, 0.1, 0)
+    Main.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+    Instance.new("UICorner", Main)
+
+    local Title = Instance.new("TextLabel", Main)
+    Title.Size = UDim2.new(1, 0, 0, 30)
+    Title.Text = "ETERNAL FORSAKEN V2"
+    Title.TextColor3 = Color3.fromRGB(0, 200, 255)
+    Title.Font = Enum.Font.GothamBold
+    Title.TextSize = 14
+    Title.BackgroundTransparency = 1
+
+    local ToggleBtn = Instance.new("TextButton", Main)
+    ToggleBtn.Size = UDim2.new(0.8, 0, 0, 40)
+    ToggleBtn.Position = UDim2.new(0.1, 0, 0.45, 0)
+    ToggleBtn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+    ToggleBtn.Text = "SYSTEM: ACTIVE"
+    ToggleBtn.TextColor3 = Color3.fromRGB(0, 255, 120)
+    ToggleBtn.Font = Enum.Font.GothamBold
+    Instance.new("UICorner", ToggleBtn)
+
+    -- Dragging Logic
+    local d, ds, sp
+    Main.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            d = true; ds = i.Position; sp = Main.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if d and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local delta = i.Position - ds
+            Main.Position = UDim2.new(sp.X.Scale, sp.X.Offset + delta.X, sp.Y.Scale, sp.Y.Offset + delta.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function() d = false end)
+
+    ToggleBtn.MouseButton1Click:Connect(function()
+        Settings.Enabled = not Settings.Enabled
+        ToggleBtn.Text = Settings.Enabled and "SYSTEM: ACTIVE" or "SYSTEM: DISABLED"
+        ToggleBtn.TextColor3 = Settings.Enabled and Color3.fromRGB(0, 255, 120) or Color3.fromRGB(255, 50, 50)
+    end)
+end
+
+-- // 6. STARTUP //
+local Engine = Eternal.new()
+Engine:RunLoop()
+CreateUI()
+
+StarterGui:SetCore("SendNotification", {
+    Title = "Eternal V2 Engaged",
+    Text = "Bypassing Forsaken Exhaustion...",
+    Duration = 5
+})
