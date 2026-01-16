@@ -1,176 +1,190 @@
 --[[
-    BLIND SHOT: ULTIMATE REVEAL & ETERNAL STAMINA (v6.0)
-    Target Game: Blind Shot (MisfitsBStoo)
+    BLIND SHOT: FULL VISION ENGINE (v7.0)
+    Target: MisfitsBStoo version
     
-    [CORE FEATURES]
-    - Ghost Reveal: Forces all invisible characters to be 100% visible.
-    - Highlight ESP: Outlines players in bright red (Visible through UI overlays).
-    - Blindfold Bypass: Detects and deletes the black screen GUI.
-    - Eternal Energy: Infinite Dash and Ability power for 2026 mechanics.
+    [FEATURES]
+    - Avatar Unhider: Forces full rendering of clothes, accessories, and skins.
+    - Weapon Visualizer: Shows exactly what gun they are holding and where it's pointing.
+    - User Tags: Creates custom BillboardGuis so you can see who is who.
+    - Laser Persistence: Forces the red trajectory beams to be visible at all times.
+    - Eternal Energy: Bypasses dash/stamina limits.
 ]]
 
--- // 1. SERVICES //
+-- // 1. CORE SERVICES //
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local LocalPlayer = Players.LocalPlayer
 
--- // 2. CONFIGURATION //
+-- // 2. SETTINGS //
 local Config = {
     Enabled = true,
-    RevealPlayers = true,   -- The "Unhider"
-    InfiniteEnergy = true,  -- Infinite Dash/Stamina
-    RemoveBlindfold = true, -- Removes the Black Overlay
-    ESPColor = Color3.fromRGB(255, 0, 50)
+    ShowAvatars = true,
+    ShowNames = true,
+    ShowLasers = true,
+    InfEnergy = true,
+    RevealTransparency = 0 -- 0 is fully visible, 0.5 is ghost-like
 }
 
--- // 3. VISION & REVEAL ENGINE //
--- This is the specific function to "Unhide" players
-local function UnhidePlayers()
+-- // 3. NAME TAG SYSTEM //
+-- Creates a clean, floating name above every hidden player
+local function CreateNameTag(char, name)
+    if char:FindFirstChild("EternalTag") then return end
+    
+    local head = char:WaitForChild("Head", 5)
+    if not head then return end
+
+    local bgui = Instance.new("BillboardGui")
+    bgui.Name = "EternalTag"
+    bgui.Adornee = head
+    bgui.Size = UDim2.new(0, 200, 0, 50)
+    bgui.StudsOffset = Vector3.new(0, 3, 0)
+    bgui.AlwaysOnTop = true
+    bgui.Parent = char
+
+    local text = Instance.new("TextLabel", bgui)
+    text.BackgroundTransparency = 1
+    text.Size = UDim2.new(1, 0, 1, 0)
+    text.Text = name
+    text.Font = Enum.Font.GothamBold
+    text.TextColor3 = Color3.new(1, 1, 1)
+    text.TextStrokeTransparency = 0
+    text.TextSize = 14
+end
+
+-- // 4. FULL REVEAL ENGINE //
+-- This is the core logic that unhides the actual models
+local function UnhideEverything()
     for _, player in pairs(Players:GetPlayers()) do
         if player ~= LocalPlayer and player.Character then
             local char = player.Character
             
-            -- Method A: Force Visibility (Bypasses LocalTransparencyModifier)
-            -- The game uses this to hide players from your local camera
+            -- 1. Unhide the Avatar and the Gun (Tool)
             for _, part in pairs(char:GetDescendants()) do
                 if part:IsA("BasePart") or part:IsA("Decal") then
-                    if Config.RevealPlayers then
-                        -- Setting this to 0 ensures the engine renders the part
-                        part.LocalTransparencyModifier = 0
+                    -- This is the "magic" property that Roblox uses to hide players locally
+                    part.LocalTransparencyModifier = Config.RevealTransparency
+                    part.Transparency = Config.RevealTransparency
+                end
+                
+                -- 2. Unhide the Gun's Laser/Trajectory
+                -- In Blind Shot, the red line is usually a Beam or a long thin Part
+                if Config.ShowLasers then
+                    if part.Name:lower():find("laser") or part.Name:lower():find("beam") or part.Name:lower():find("trajectory") then
                         part.Transparency = 0
+                        if part:IsA("Beam") then
+                            part.Enabled = true
+                        end
                     end
                 end
             end
 
-            -- Method B: Highlight ESP
-            -- This makes them glow even if the game tries other hiding tricks
-            local highlight = char:FindFirstChild("RevealHighlight")
-            if Config.RevealPlayers then
-                if not highlight then
-                    highlight = Instance.new("Highlight")
-                    highlight.Name = "RevealHighlight"
-                    highlight.Parent = char
-                    highlight.FillColor = Config.ESPColor
-                    highlight.OutlineColor = Color3.fromRGB(255, 255, 255)
-                    highlight.FillTransparency = 0.4
-                end
-            elseif highlight then
-                highlight:Destroy()
-            end
-        end
-    end
-end
-
--- // 4. GUI & OVERLAY BYPASS //
-local function BypassBlindfold()
-    if not Config.RemoveBlindfold then return end
-    
-    local pGui = LocalPlayer:FindFirstChild("PlayerGui")
-    if pGui then
-        -- Searches for the specific frames the game uses to black out your screen
-        for _, v in pairs(pGui:GetDescendants()) do
-            if v:IsA("Frame") or v:IsA("ImageLabel") then
-                -- Common names used in the 2026 version of Blind Shot
-                if v.Name:lower():find("blind") or v.Name:lower():find("overlay") or v.Name:lower():find("blackout") then
-                    v.Visible = false
-                    v.BackgroundTransparency = 1
-                end
+            -- 3. Apply Name Tags
+            if Config.ShowNames then
+                CreateNameTag(char, player.DisplayName)
             end
         end
     end
 end
 
 -- // 5. ENERGY & STAMINA SYSTEM //
-local function LockEnergy()
+local function LockStamina()
     local char = LocalPlayer.Character
-    if not char or not Config.InfiniteEnergy then return end
+    if not char or not Config.InfEnergy then return end
 
-    -- Enforce Attributes (The game uses these for Dashing and Special Abilities)
+    -- Blind Shot uses Attributes on the Character model
     char:SetAttribute("Energy", 100)
     char:SetAttribute("Stamina", 100)
     char:SetAttribute("CanDash", true)
-
-    -- Fix for the 2026 cooldown bug where abilities get stuck
-    local cooldown = char:FindFirstChild("AbilityCooldown")
-    if cooldown then cooldown.Value = 0 end
+    
+    -- Ensure Dash cooldown doesn't trigger
+    local dashVal = char:FindFirstChild("DashCooldown") or char:FindFirstChild("Cooldown")
+    if dashVal and dashVal:IsA("ValueBase") then
+        dashVal.Value = 0
+    end
 end
 
--- // 6. RUNTIME CONTROL //
--- We use RenderStepped for Vision and Heartbeat for Physics/Attributes
+-- // 6. BYPASSING THE BLINDFOLD UI //
+local function ClearScreen()
+    local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if pGui then
+        -- Find the specific frames that turn the screen black
+        for _, v in pairs(pGui:GetDescendants()) do
+            if v:IsA("Frame") or v:IsA("ImageLabel") then
+                if v.Name == "Blindfold" or v.Name == "Overlay" or v.Name == "Blackout" then
+                    v.Visible = false
+                end
+            end
+        end
+    end
+end
+
+-- // 7. RUNTIME LOOP //
 RunService.RenderStepped:Connect(function()
     if Config.Enabled then
-        UnhidePlayers()
-        BypassBlindfold()
+        UnhideEverything()
+        ClearScreen()
+        LockStamina()
     end
 end)
 
-RunService.Heartbeat:Connect(function()
-    if Config.Enabled then
-        LockEnergy()
-    end
-end)
-
--- // 7. INTERFACE //
-local function CreateUI()
+-- // 8. USER INTERFACE //
+local function BuildUI()
     local Screen = Instance.new("ScreenGui", CoreGui)
-    Screen.Name = "BlindShot_Reveal_v6"
+    Screen.Name = "FullVision_v7"
 
     local Main = Instance.new("Frame", Screen)
-    Main.Size = UDim2.new(0, 240, 0, 180)
-    Main.Position = UDim2.new(0.1, 0, 0.5, -90)
-    Main.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
-    Main.BorderSizePixel = 0
-    Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 8)
+    Main.Size = UDim2.new(0, 240, 0, 200)
+    Main.Position = UDim2.new(0.05, 0, 0.4, 0)
+    Main.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    Instance.new("UICorner", Main)
 
     local Title = Instance.new("TextLabel", Main)
     Title.Size = UDim2.new(1, 0, 0, 40)
-    Title.Text = "REVEAL MASTER v6"
-    Title.TextColor3 = Color3.fromRGB(255, 50, 50)
+    Title.Text = "FULL VISION ENGINE"
+    Title.TextColor3 = Color3.fromRGB(0, 255, 150)
     Title.Font = Enum.Font.GothamBold
     Title.TextSize = 16
     Title.BackgroundTransparency = 1
 
-    local function MakeToggle(name, configKey, yPos)
-        local btn = Instance.new("TextButton", Main)
-        btn.Size = UDim2.new(0.9, 0, 0, 35)
-        btn.Position = UDim2.new(0.05, 0, 0, yPos)
-        btn.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-        btn.BackgroundTransparency = 0.95
-        btn.Text = name .. ": ON"
-        btn.TextColor3 = Color3.fromRGB(0, 255, 150)
-        btn.Font = Enum.Font.Gotham
-        Instance.new("UICorner", btn)
+    local function Toggle(text, key, y)
+        local b = Instance.new("TextButton", Main)
+        b.Size = UDim2.new(0.9, 0, 0, 35)
+        b.Position = UDim2.new(0.05, 0, 0, y)
+        b.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+        b.Text = text .. ": ON"
+        b.TextColor3 = Color3.fromRGB(0, 255, 150)
+        b.Font = Enum.Font.Gotham
+        Instance.new("UICorner", b)
 
-        btn.MouseButton1Click:Connect(function()
-            Config[configKey] = not Config[configKey]
-            btn.Text = name .. (Config[configKey] and ": ON" or ": OFF")
-            btn.TextColor3 = Config[configKey] and Color3.fromRGB(0, 255, 150) or Color3.fromRGB(255, 60, 60)
+        b.MouseButton1Click:Connect(function()
+            Config[key] = not Config[key]
+            b.Text = text .. (Config[key] and ": ON" or ": OFF")
+            b.TextColor3 = Config[key] and Color3.fromRGB(0, 255, 150) or Color3.fromRGB(255, 50, 50)
         end)
     end
 
-    MakeToggle("Reveal Players", "RevealPlayers", 45)
-    MakeToggle("Remove Blindfold", "RemoveBlindfold", 90)
-    MakeToggle("Inf Dash/Energy", "InfiniteEnergy", 135)
+    Toggle("Unhide Avatars", "ShowAvatars", 45)
+    Toggle("Show Usernames", "ShowNames", 85)
+    Toggle("Force Laser Visibility", "ShowLasers", 125)
+    Toggle("Infinite Dash", "InfEnergy", 165)
 
-    -- Drag Logic
-    local dragging, dragInput, dragStart, startPos
-    Main.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true; dragStart = input.Position; startPos = Main.Position
+    -- Draggable
+    local d, ds, sp
+    Main.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            d = true; ds = i.Position; sp = Main.Position
         end
     end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
-            local delta = input.Position - dragStart
-            Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    UserInputService.InputChanged:Connect(function(i)
+        if d and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local delta = i.Position - ds
+            Main.Position = UDim2.new(sp.X.Scale, sp.X.Offset + delta.X, sp.Y.Scale, sp.Y.Offset + delta.Y)
         end
     end)
-    UserInputService.InputEnded:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 then dragging = false end
-    end)
+    UserInputService.InputEnded:Connect(function() d = false end)
 end
 
-CreateUI()
-print("[BLIND SHOT] Reveal Script v6.0 Initialized. Good luck!")
+BuildUI()
+print("[VISION] Blind Shot Master Engine Loaded.")
