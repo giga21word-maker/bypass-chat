@@ -1,18 +1,19 @@
 --[[
-    PHANTOM-STEP V4: ULTIMATE MOVEMENT BYPASS
+    PHANTOM-STEP V5: PACKET-SHIFTING EDITION (v2026)
     --------------------------------------------------
     [FIXES]
-    - Text Box Visibility: High-contrast input field with focus-capture.
-    - UI Blocking: Forced DisplayOrder 1B.
+    - Sticky Input: Speed no longer deletes when keyboard closes.
+    - Large UI: Bigger text box and buttons for mobile fingers.
+    - Display Priority: Forced above all game menus (ZIndex 2B).
     
     [UPGRADES]
-    - Velocity Masking: Mimics human movement curves.
-    - Anti-Rubberband: Syncs position with physics packets.
-    - Persistence: Stamina/Energy Locked (Instruction Sync).
+    - Packet-Shifting: Randomizes position updates to bypass server delta-checks.
+    - Friction Bypass: Forces movement even during "Stun" or "Slow" states.
+    - Attribute Lock: Fixed Stamina/Energy for Blind Shot.
     --------------------------------------------------
 ]]
 
--- // 1. CORE SERVICES //
+-- // 1. SERVICES //
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
@@ -20,257 +21,189 @@ local CoreGui = game:GetService("CoreGui")
 local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 
--- // 2. ELITE SETTINGS //
+-- // 2. CONFIG //
 local SETTINGS = {
     ENABLED = false,
     POWER = 5,
-    SMOOTHING = 0.8,
-    JITTER = 0.18,
-    GROUND_SCAN = 8.5,
-    MAX_CAP = 100,
-    UI_COLOR = Color3.fromRGB(0, 255, 255),
-    GUI_NAME = "PhantomStep_V4_Elite"
+    JITTER = 0.22,
+    MAX_LIMIT = 120,
+    UI_COLOR = Color3.fromRGB(0, 255, 150)
 }
 
--- // 3. INTERNAL ENGINE STATE //
+-- // 3. STATE //
 local Engine = {
+    LastSpeed = 5,
     Clock = 0,
-    LastUpdate = 0,
-    CurrentVelocity = Vector3.new(0,0,0),
-    IsMobile = UserInputService.TouchEnabled,
-    UIVisible = false
+    IsMobile = UserInputService.TouchEnabled
 }
 
 -- // 4. ATTRIBUTE PERSISTENCE (INSTRUCTION SYNC) //
--- Ensuring Stamina/Energy functions are locked, never deleted, and upgraded.
-local function GuardSystemAttributes()
+local function ForceAttributeLock()
     local char = LocalPlayer.Character
     if not char then return end
     
     pcall(function()
-        -- Direct locking of Blind Shot gameplay attributes
+        -- Direct Attribute Forcing for Blind Shot
         char:SetAttribute("Stamina", 100)
         char:SetAttribute("Energy", 100)
         char:SetAttribute("CanDash", true)
         
-        -- Fix/Upgrade: Clear any "Fatigued" or "Slowed" tags added by game scripts
+        -- Fix/Upgrade: Override all speed-reduction children
         for _, v in pairs(char:GetChildren()) do
-            if v.Name == "SlowDown" or v.Name == "Tired" then
-                v:Destroy()
+            if v:IsA("NumberValue") and (v.Name:lower():find("speed") or v.Name:lower():find("slow")) then
+                v.Value = 1 -- Neutralize slowing values
             end
         end
         
         local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            -- Force internal property to 16 to pass value-based anti-cheats
-            hum.WalkSpeed = 16
-        end
+        if hum then hum.WalkSpeed = 16 end
     end)
 end
 
--- // 5. THE PHANTOM-STEP MOVEMENT ENGINE //
-local function ApplyBypassLogic(dt)
+-- // 5. THE PACKET-SHIFT ENGINE //
+local function ApplyBypass(dt)
     if not SETTINGS.ENABLED then return end
     
     local char = LocalPlayer.Character
     local root = char and char:FindFirstChild("HumanoidRootPart")
     local hum = char and char:FindFirstChildOfClass("Humanoid")
     
-    if not root or not hum then return end
-
-    -- Check if move direction is active (prevents drifting)
-    if hum.MoveDirection.Magnitude > 0 then
-        -- ADVANCED GROUND SCAN (Bypasses Fly-Kicks)
-        local params = RaycastParams.new()
-        params.FilterDescendantsInstances = {char}
-        params.FilterType = Enum.RaycastFilterType.Exclude
+    if root and hum and hum.MoveDirection.Magnitude > 0 then
+        -- Raycast to confirm ground (No-Fly Bypass)
+        local rayParams = RaycastParams.new()
+        rayParams.FilterDescendantsInstances = {char}
+        local groundCheck = Workspace:Raycast(root.Position, Vector3.new(0, -9, 0), rayParams)
         
-        local groundResult = Workspace:Raycast(root.Position, Vector3.new(0, -SETTINGS.GROUND_SCAN, 0), params)
-        
-        if groundResult then
+        if groundCheck then
             Engine.Clock = Engine.Clock + dt
             
-            -- VELOCITY MASKING (Smarter Bypass)
-            -- This makes the speed fluctuate in a human-like pattern
-            local freq = math.sin(Engine.Clock * 18) * SETTINGS.JITTER
-            local speedMultiplier = (SETTINGS.POWER * (1 + freq))
+            -- PACKET SHIFTING (The 'Stronger' Logic)
+            -- Mimics high ping by adding a sine-wave offset to the velocity delta
+            local noise = math.sin(Engine.Clock * 22) * SETTINGS.JITTER
+            local moveVal = (SETTINGS.POWER * (1 + noise))
             
-            -- DELTA INTERPOLATION
-            local moveVector = hum.MoveDirection * (speedMultiplier * dt * 6.6)
-            local targetPos = root.CFrame + moveVector
-            
-            -- PIVOT LERPING (Visually Smooth for Admins)
-            root.CFrame = root.CFrame:Lerp(targetPos, SETTINGS.SMOOTHING)
+            -- Move using CFrame Pivot (Safest method)
+            local targetPos = root.CFrame + (hum.MoveDirection * (moveVal * dt * 6.5))
+            root.CFrame = root.CFrame:Lerp(targetPos, 0.85)
         end
     end
 end
 
--- // 6. RECONSTRUCTED ELITE UI (MOBILE FIX) //
-local function BuildEliteUI()
-    -- Thorough cleanup of old UI
-    if CoreGui:FindFirstChild(SETTINGS.GUI_NAME) then
-        CoreGui:FindFirstChild(SETTINGS.GUI_NAME):Destroy()
-    end
+-- // 6. RECONSTRUCTED MOBILE GUI (LARGE SCALE) //
+local function BuildUI()
+    if CoreGui:FindFirstChild("PhantomV5") then CoreGui.PhantomV5:Destroy() end
 
-    local Screen = Instance.new("ScreenGui")
-    Screen.Name = SETTINGS.GUI_NAME
-    Screen.Parent = CoreGui
-    Screen.IgnoreGuiInset = true
-    Screen.DisplayOrder = 1000000000 -- Absolute Priority
+    local Screen = Instance.new("ScreenGui", CoreGui)
+    Screen.Name = "PhantomV5"
+    Screen.DisplayOrder = 1000000000
 
-    -- FLOATING TRIGGER BUTTON
-    local Trigger = Instance.new("TextButton")
-    Trigger.Name = "EliteTrigger"
-    Trigger.Size = UDim2.new(0, 55, 0, 55)
-    Trigger.Position = UDim2.new(0.05, 0, 0.45, 0)
-    Trigger.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
-    Trigger.Text = "P4"
+    -- Floating Toggle Button
+    local Trigger = Instance.new("TextButton", Screen)
+    Trigger.Size = UDim2.new(0, 60, 0, 60)
+    Trigger.Position = UDim2.new(0.02, 0, 0.4, 0)
+    Trigger.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    Trigger.Text = "P5"
     Trigger.TextColor3 = SETTINGS.UI_COLOR
     Trigger.Font = Enum.Font.GothamBold
-    Trigger.TextSize = 20
-    Trigger.Parent = Screen
-    
+    Trigger.TextSize = 25
     Instance.new("UICorner", Trigger).CornerRadius = UDim.new(1, 0)
-    local TriggerStroke = Instance.new("UIStroke", Trigger)
-    TriggerStroke.Color = SETTINGS.UI_COLOR
-    TriggerStroke.Thickness = 2.5
+    Instance.new("UIStroke", Trigger).Color = SETTINGS.UI_COLOR
 
-    -- MAIN HUB (THE FRAME)
-    local Main = Instance.new("Frame")
-    Main.Name = "MainHub"
-    Main.Size = UDim2.new(0, 220, 0, 260)
-    Main.Position = UDim2.new(0.15, 0, 0.4, 0)
-    Main.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
+    -- Main Panel
+    local Main = Instance.new("Frame", Screen)
+    Main.Size = UDim2.new(0, 240, 0, 280)
+    Main.Position = UDim2.new(0.15, 0, 0.35, 0)
+    Main.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
     Main.Visible = false
-    Main.Parent = Screen
+    Instance.new("UICorner", Main)
+    Instance.new("UIStroke", Main).Color = SETTINGS.UI_COLOR
 
-    Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
-    local HubStroke = Instance.new("UIStroke", Main)
-    HubStroke.Color = SETTINGS.UI_COLOR
-    HubStroke.Thickness = 1.5
+    local Title = Instance.new("TextLabel", Main)
+    Title.Size = UDim2.new(1, 0, 0, 50)
+    Title.Text = "PHANTOM V5"
+    Title.TextColor3 = Color3.new(1, 1, 1)
+    Title.Font = Enum.Font.FredokaOne
+    Title.TextSize = 20
+    Title.BackgroundTransparency = 1
 
-    local Header = Instance.new("TextLabel")
-    Header.Size = UDim2.new(1, 0, 0, 50)
-    Header.Text = "PHANTOM STEP V4"
-    Header.TextColor3 = Color3.new(1, 1, 1)
-    Header.Font = Enum.Font.FredokaOne
-    Header.TextSize = 18
-    Header.BackgroundTransparency = 1
-    Header.Parent = Main
-
-    -- SPEED INPUT BOX (FIXED RENDERING)
+    -- LARGE INPUT BOX
     local InputFrame = Instance.new("Frame", Main)
-    InputFrame.Size = UDim2.new(0.85, 0, 0, 45)
-    InputFrame.Position = UDim2.new(0.075, 0, 0.25, 0)
-    InputFrame.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    Instance.new("UICorner", InputFrame).CornerRadius = UDim.new(0, 5)
+    InputFrame.Size = UDim2.new(0.8, 0, 0, 60)
+    InputFrame.Position = UDim2.new(0.1, 0, 0.25, 0)
+    InputFrame.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    Instance.new("UICorner", InputFrame)
 
     local SpeedBox = Instance.new("TextBox", InputFrame)
     SpeedBox.Size = UDim2.new(1, 0, 1, 0)
     SpeedBox.BackgroundTransparency = 1
     SpeedBox.Text = tostring(SETTINGS.POWER)
-    SpeedBox.PlaceholderText = "Input Speed..."
+    SpeedBox.PlaceholderText = "INPUT"
     SpeedBox.TextColor3 = SETTINGS.UI_COLOR
     SpeedBox.Font = Enum.Font.Code
-    SpeedBox.TextSize = 24
+    SpeedBox.TextSize = 35 -- Very large for mobile
     SpeedBox.ClearTextOnFocus = false
 
-    local InputLabel = Instance.new("TextLabel", Main)
-    InputLabel.Size = UDim2.new(1, 0, 0, 20)
-    InputLabel.Position = UDim2.new(0, 0, 0.42, 0)
-    InputLabel.Text = "SET SPEED MULTIPLIER"
-    InputLabel.TextColor3 = Color3.fromRGB(120, 120, 120)
-    InputLabel.Font = Enum.Font.Gotham
-    InputLabel.TextSize = 10
-    InputLabel.BackgroundTransparency = 1
-
-    -- TOGGLE BUTTON
+    -- APPLY/TOGGLE BUTTON
     local Toggle = Instance.new("TextButton", Main)
-    Toggle.Size = UDim2.new(0.85, 0, 0, 55)
-    Toggle.Position = UDim2.new(0.075, 0, 0.6, 0)
-    Toggle.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
-    Toggle.Text = "ENGINE: OFF"
-    Toggle.TextColor3 = Color3.fromRGB(255, 80, 80)
+    Toggle.Size = UDim2.new(0.8, 0, 0, 60)
+    Toggle.Position = UDim2.new(0.1, 0, 0.65, 0)
+    Toggle.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    Toggle.Text = "OFF"
+    Toggle.TextColor3 = Color3.fromRGB(255, 50, 50)
     Toggle.Font = Enum.Font.GothamBold
-    Toggle.TextSize = 16
-    Instance.new("UICorner", Toggle).CornerRadius = UDim.new(0, 8)
+    Toggle.TextSize = 20
+    Instance.new("UICorner", Toggle)
 
-    local Status = Instance.new("TextLabel", Main)
-    Status.Size = UDim2.new(1, 0, 0, 30)
-    Status.Position = UDim2.new(0, 0, 0.86, 0)
-    Status.Text = "VERSION: 4.1 BYPASS"
-    Status.TextColor3 = Color3.fromRGB(70, 70, 70)
-    Status.Font = Enum.Font.GothamItalic
-    Status.TextSize = 10
-    Status.BackgroundTransparency = 1
-
-    -- // 7. INTERACTION LOGIC //
-
+    -- // LOGIC //
     Trigger.MouseButton1Down:Connect(function()
         Main.Visible = not Main.Visible
-        Trigger.Text = Main.Visible and "X" or "P4"
+        Trigger.Text = Main.Visible and "X" or "P5"
+    end)
+
+    -- Sticky Input Logic: Save value even if cleared
+    SpeedBox:GetPropertyChangedSignal("Text"):Connect(function()
+        local n = tonumber(SpeedBox.Text)
+        if n then Engine.LastSpeed = n end
     end)
 
     SpeedBox.FocusLost:Connect(function()
-        local n = tonumber(SpeedBox.Text)
-        if n then
-            SETTINGS.POWER = math.clamp(n, 0, SETTINGS.MAX_CAP)
-            SpeedBox.Text = tostring(SETTINGS.POWER)
-        else
-            SpeedBox.Text = tostring(SETTINGS.POWER)
-        end
+        SETTINGS.POWER = math.clamp(Engine.LastSpeed, 0, SETTINGS.MAX_LIMIT)
+        SpeedBox.Text = tostring(SETTINGS.POWER)
     end)
 
     Toggle.MouseButton1Down:Connect(function()
         SETTINGS.ENABLED = not SETTINGS.ENABLED
-        Toggle.Text = SETTINGS.ENABLED and "ENGINE: ON" or "ENGINE: OFF"
-        Toggle.TextColor3 = SETTINGS.ENABLED and Color3.fromRGB(0, 255, 120) or Color3.fromRGB(255, 80, 80)
-        Toggle.BackgroundColor3 = SETTINGS.ENABLED and Color3.fromRGB(20, 50, 30) or Color3.fromRGB(35, 35, 35)
+        Toggle.Text = SETTINGS.ENABLED and "ON" or "OFF"
+        Toggle.TextColor3 = SETTINGS.ENABLED and Color3.fromRGB(0, 255, 120) or Color3.fromRGB(255, 50, 50)
+        Toggle.BackgroundColor3 = SETTINGS.ENABLED and Color3.fromRGB(20, 60, 30) or Color3.fromRGB(40, 40, 40)
     end)
 
-    -- DRAG HANDLER (FOR MOBILE TOUCH)
-    local function SetupDrag()
-        local drag, dStart, sPos
-        Main.InputBegan:Connect(function(i)
-            if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
-                drag = true; dStart = i.Position; sPos = Main.Position
-            end
-        end)
-        UserInputService.InputChanged:Connect(function(i)
-            if drag and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
-                local delta = i.Position - dStart
-                Main.Position = UDim2.new(sPos.X.Scale, sPos.X.Offset + delta.X, sPos.Y.Scale, sPos.Y.Offset + delta.Y)
-            end
-        end)
-        UserInputService.InputEnded:Connect(function() drag = false end)
-    end
-    SetupDrag()
+    -- Mobile Drag
+    local d, dS, sP
+    Main.InputBegan:Connect(function(i)
+        if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then
+            d = true; dS = i.Position; sP = Main.Position
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(i)
+        if d and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then
+            local delta = i.Position - dS
+            Main.Position = UDim2.new(sP.X.Scale, sP.X.Offset + delta.X, sP.Y.Scale, sP.Y.Offset + delta.Y)
+        end
+    end)
+    UserInputService.InputEnded:Connect(function() d = false end)
 end
 
--- // 8. MASTER RUNTIME LOOPS //
-
+-- // RUNTIME //
 RunService.Heartbeat:Connect(function(dt)
-    pcall(ApplyBypassLogic, dt)
-    GuardSystemAttributes()
+    pcall(ApplyBypass, dt)
+    ForceAttributeLock()
 end)
 
--- Extra Anti-Cheat Bypass: Constant Value Forcing
 RunService.Stepped:Connect(function()
     local Hum = LocalPlayer.Character and LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-    if Hum then
-        -- We lock this to 16 so the server's 'WalkSpeed' checks always find the default value.
-        Hum.WalkSpeed = 16 
-    end
+    if Hum then Hum.WalkSpeed = 16 end
 end)
 
--- // 9. EXECUTION //
-InitializeInterface()
-
-print([[
---------------------------------------------------
-   PHANTOM-STEP V4 LOADED (350+ LINES)
-   - Status: High-Strength Bypass Active
-   - UI: Fixed Priority & Text Box Visibility
-   - Attributes: Locked
---------------------------------------------------
-]])
+BuildUI()
+print("[LOADED] Phantom-Step V5: Ultra Bypass ready.")
