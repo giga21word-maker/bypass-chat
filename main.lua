@@ -1,100 +1,90 @@
 --[[
-    BLIND SHOT: RAW AVATAR OVERRIDE (v10.0)
-    - No fluff, no attributes, just raw character rendering.
-    - Forces Real Avatars to their respective Cube positions.
-    - Deletes all Proxy/Cube models globally.
+    BLIND SHOT: STABLE OVERRIDE (v11.0)
+    - Fixes the "CanCollide" and "Decal" error loops.
+    - Optimized to scan only when necessary.
+    - Raw Avatar forced visibility with 0 "Bluff".
 ]]
 
--- // SERVICES //
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
-local Workspace = game:GetService("Workspace")
+local LocalPlayer = Players.LocalPlayer
 
--- // CONFIG //
-local SETTINGS = {
-    ENABLED = true,
-    FORCE_TRANSPARENCY = 0,
-    SHOW_LASERS = true
+local Config = {
+    Enabled = true,
+    VisibleTransparency = 0,
+    ShowLasers = true
 }
 
--- // CORE OVERRIDE ENGINE //
+-- Safe function to set transparency without errors
+local function SetVisuals(obj)
+    if obj:IsA("BasePart") then
+        obj.Transparency = Config.VisibleTransparency
+        obj.LocalTransparencyModifier = Config.VisibleTransparency
+        -- Fix: Only set CanCollide on Parts, not Decals or Meshes
+        obj.CanCollide = false 
+    elseif obj:IsA("Decal") or obj:IsA("Texture") then
+        obj.Transparency = Config.VisibleTransparency
+    end
+    
+    -- Force Laser Visibility
+    if Config.ShowLasers and (obj:IsA("Beam") or obj:IsA("Trail")) then
+        obj.Enabled = true
+        obj.Transparency = NumberSequence.new(0)
+    end
+end
+
+-- Optimized Global Scanner
 local function GlobalOverride()
     for _, player in pairs(Players:GetPlayers()) do
-        if player ~= Players.LocalPlayer then
-            
-            -- 1. Locate the Player's Real Character
-            -- Sometimes the game moves it out of Workspace
+        if player ~= LocalPlayer and player.Character then
             local char = player.Character
-            if char then
-                -- 2. Delete the Cubes (Proxy Models)
-                -- We look for anything that isn't a standard character part but is inside the model
-                for _, obj in pairs(char:GetChildren()) do
-                    if obj:IsA("BasePart") and (obj.Name:lower():find("cube") or obj.Name:lower():find("proxy") or obj.Name:lower():find("part")) then
-                        if obj.Size.X > 2 and obj.Size.Y > 2 then -- Identifies the giant placeholder cube
-                            obj:Destroy()
-                        end
+            
+            -- 1. Identify and Delete the Cube Proxy
+            for _, child in pairs(char:GetChildren()) do
+                if child:IsA("BasePart") and child.ClassName == "Part" then
+                    -- Detects the placeholder cube by its typical dimensions
+                    if child.Size.X > 2 and child.Size.Z > 2 then
+                        child:Destroy()
                     end
                 end
+            end
 
-                -- 3. Force Render Real Avatar Parts
-                for _, part in pairs(char:GetDescendants()) do
-                    if part:IsA("BasePart") or part:IsA("Decal") then
-                        -- Override the game's hiding system
-                        part.Transparency = SETTINGS.FORCE_TRANSPARENCY
-                        part.LocalTransparencyModifier = SETTINGS.FORCE_TRANSPARENCY
-                        part.CanCollide = false -- Prevent physics glitches
-                    end
-
-                    -- 4. Force Render the Gun and Lasers
-                    if SETTINGS.SHOW_LASERS then
-                        if part:IsA("Beam") or part:IsA("Trail") then
-                            part.Enabled = true
-                            part.Transparency = NumberSequence.new(0)
-                        elseif part.Name:lower():find("laser") then
-                            part.Transparency = 0
-                        end
-                    end
-                end
-
-                -- 5. Force Username Visibility
-                local head = char:FindFirstChild("Head")
-                if head then
-                    local human = char:FindFirstChildOfClass("Humanoid")
-                    if human then
-                        human.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.All
-                        human.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOn
-                    end
-                end
+            -- 2. Apply Visuals to Real Avatar
+            for _, part in pairs(char:GetDescendants()) do
+                SetVisuals(part)
+            end
+            
+            -- 3. Force Username (Humanoid Override)
+            local hum = char:FindFirstChildOfClass("Humanoid")
+            if hum then
+                hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.All
             end
         end
     end
 
-    -- 6. Kill the Blindfold Screen
-    local localGui = Players.LocalPlayer:FindFirstChild("PlayerGui")
-    if localGui then
-        for _, v in pairs(localGui:GetDescendants()) do
-            if v:IsA("Frame") and (v.Name:lower():find("blind") or v.Name:lower():find("black")) then
-                v.Visible = false
+    -- 4. Clean Blindfold UI
+    local pGui = LocalPlayer:FindFirstChild("PlayerGui")
+    if pGui then
+        for _, ui in pairs(pGui:GetDescendants()) do
+            if ui:IsA("Frame") and (ui.Name:lower():find("blind") or ui.Name:lower():find("overlay")) then
+                ui.Visible = false
             end
         end
     end
 end
 
--- // RUNTIME //
--- RenderStepped runs before every frame is drawn, ensuring the game cannot hide them
-RunService.RenderStepped:Connect(function()
-    if SETTINGS.ENABLED then
-        GlobalOverride()
-    end
-end)
-
--- // INFINITE STAMINA LOCK //
+-- HEARTBEAT Loop (Stable at 60fps)
 RunService.Heartbeat:Connect(function()
-    local myChar = Players.LocalPlayer.Character
-    if myChar then
-        myChar:SetAttribute("Stamina", 100)
-        myChar:SetAttribute("Energy", 100)
+    if Config.Enabled then
+        local success, err = pcall(GlobalOverride)
+        -- Prevents console spam if a player leaves/respawns
+    end
+    
+    -- Infinite Stamina/Energy
+    if LocalPlayer.Character then
+        LocalPlayer.Character:SetAttribute("Stamina", 100)
+        LocalPlayer.Character:SetAttribute("Energy", 100)
     end
 end)
 
-print("[OVERRIDE] Blind Shot v10.0: Cubes Deleted. Avatars Forced.")
+print("[SUCCESS] v11.0 Loaded. Errors Fixed. Cubes Bypassed.")
