@@ -1,14 +1,10 @@
 --[[
-    AETHER-WALK V6: BRAINROT SURVIVAL & ANTI-CHEAT OBLITERATOR
+    AETHER-WALK V7: OBLITERATOR + PHANTOM GOD + COORDINATE TOOL
     ----------------------------------------------------------
     [PROJECT LOG: 2026-01-16]
-    - FIXED: Vertical Ascent/Descent via Camera LookVector.
-    - FIXED: Sticky Speed Buffer for mobile keyboards.
-    - ADDED: "The Dug" - Instantly clips to safe-pit depth.
-    - ADDED: "God Mode" - State-masking to nullify Tsunami damage.
-    - ADDED: "Zone TP" - Instant jump to Celestial/Cosmic regions.
-    - ADDED: "Save/Load" - Positional memory for farming locations.
-    - OPTIMIZED: Vector-Packet Splitting to bypass 2026 detection.
+    - UPDATED: God Mode now uses Phantom-Anchor (Health Lock + CanTouch bypass).
+    - ADDED: "Copy Position" button to F9 console for fixing zone coords.
+    - FIXED: Vertical Ascent/Descent and Speed Masking at 16.
     ----------------------------------------------------------
 ]]
 
@@ -18,7 +14,6 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local CoreGui = game:GetService("CoreGui")
 local Workspace = game:GetService("Workspace")
-local HttpService = game:GetService("HttpService")
 local Camera = Workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
 
@@ -28,12 +23,12 @@ local AETHER_CONFIG = {
     GOD_MODE = false,
     SPEED = 80,
     MAX_CAP = 1000,
-    UI_COLOR = Color3.fromRGB(170, 0, 255),
+    UI_COLOR = Color3.fromRGB(0, 255, 180),
     SAVED_POS = nil,
-    VERSION = "V6.0.1 - Brainrot Edition"
+    VERSION = "V7.0.0 - Phantom Edition"
 }
 
--- Zone Coordinates (Hardcoded for "Escape Tsunami for Brainrots")
+-- Current Zones (Use the Copy Position tool to give me new numbers!)
 local ZONES = {
     ["BASE"] = Vector3.new(0, 5, 0),
     ["LEGENDARY"] = Vector3.new(0, 5, 1200),
@@ -45,41 +40,43 @@ local ZONES = {
 -- // 3. INTERNAL ENGINE STATE //
 local Internal = {
     SpeedBuffer = 80,
-    LastUpdate = tick(),
-    FlightConnection = nil,
-    BypassActive = true,
     UIVisible = true
 }
 
--- // 4. THE OBLITERATOR BYPASS (INSTRUCTION SYNC) //
--- This function is locked and optimized. Do not delete.
+-- // 4. THE PHANTOM BYPASS (GOD MODE + ANTI-CHEAT) //
 local function GlobalBypassSync()
     local Char = LocalPlayer.Character
     if not Char then return end
     
     pcall(function()
-        -- Attribute Locking: Bypasses stamina/energy drain
-        Char:SetAttribute("Stamina", 100)
-        Char:SetAttribute("Energy", 100)
-        Char:SetAttribute("CanDash", true)
-        
         local Hum = Char:FindFirstChildOfClass("Humanoid")
         local Root = Char:FindFirstChild("HumanoidRootPart")
         
         if Hum and Root then
-            -- MASKING: Server-side scanners see 16 WalkSpeed (Normal)
+            -- Masking for Anti-Cheat
             Hum.WalkSpeed = 16
+            Char:SetAttribute("Stamina", 100)
+            Char:SetAttribute("Energy", 100)
             
             if AETHER_CONFIG.ENABLED then
-                -- State-Spoofing: Sets state to 'RunningNoPhysics'
-                -- This makes the server think you are on a conveyor or lift
                 Hum:ChangeState(Enum.HumanoidStateType.RunningNoPhysics)
-                
-                -- Anti-Tsunami God Mode Logic
-                if AETHER_CONFIG.GOD_MODE then
-                    Hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
-                    -- Forcing health to max locally to prevent death-scripts
-                    Hum.Health = Hum.MaxHealth
+            end
+
+            -- PHANTOM GOD MODE: Disables touches so the Tsunami script can't find you
+            if AETHER_CONFIG.GOD_MODE then
+                for _, part in pairs(Char:GetChildren()) do
+                    if part:IsA("BasePart") then 
+                        part.CanTouch = false 
+                    end
+                end
+                Hum.MaxHealth = 999999
+                Hum.Health = 999999
+                Hum:SetStateEnabled(Enum.HumanoidStateType.Dead, false)
+            else
+                for _, part in pairs(Char:GetChildren()) do
+                    if part:IsA("BasePart") then 
+                        part.CanTouch = true 
+                    end
                 end
             end
         end
@@ -100,41 +97,28 @@ local function ExecuteAether(dt)
     local MoveDir = Hum.MoveDirection
     
     if MoveDir.Magnitude > 0 then
-        -- ADVANCED VECTOR INJECTION:
-        -- We calculate a composite vector of camera gaze and walk direction
         local TargetVelocity = Look * AETHER_CONFIG.SPEED
-        
-        -- Physics Bypass: We set velocity while frame-splitting the position
         Root.AssemblyLinearVelocity = TargetVelocity
-        
-        -- CFrame Delta-Splitting: Bypasses "Position Jump" detection
-        Root.CFrame = Root.CFrame + (TargetVelocity * dt * 0.075)
+        Root.CFrame = Root.CFrame + (TargetVelocity * dt * 0.08)
     else
-        -- ANTI-GRAVITY ANCHOR: Hover exactly where you are
-        Root.AssemblyLinearVelocity = Vector3.new(0, 1.15, 0)
+        Root.AssemblyLinearVelocity = Vector3.new(0, 1.15, 0) -- Weightless Hover
     end
 end
 
--- // 6. EXPANDED MODULAR UI //
+-- // 6. MODULAR UI //
 local function BuildUI()
-    if CoreGui:FindFirstChild("AetherV6_System") then CoreGui.AetherV6_System:Destroy() end
+    if CoreGui:FindFirstChild("AetherV7_System") then CoreGui.AetherV7_System:Destroy() end
 
     local Screen = Instance.new("ScreenGui", CoreGui)
-    Screen.Name = "AetherV6_System"
-    Screen.IgnoreGuiInset = true
+    Screen.Name = "AetherV7_System"
 
     local Main = Instance.new("Frame", Screen)
-    Main.Size = UDim2.new(0, 260, 0, 420)
+    Main.Size = UDim2.new(0, 260, 0, 440)
     Main.Position = UDim2.new(0.05, 0, 0.2, 0)
-    Main.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
-    Main.BorderSizePixel = 0
-    Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
-    
-    local Stroke = Instance.new("UIStroke", Main)
-    Stroke.Color = AETHER_CONFIG.UI_COLOR
-    Stroke.Thickness = 2
+    Main.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
+    Instance.new("UICorner", Main)
+    Instance.new("UIStroke", Main).Color = AETHER_CONFIG.UI_COLOR
 
-    -- TITLE BAR
     local Title = Instance.new("TextLabel", Main)
     Title.Size = UDim2.new(1, 0, 0, 40)
     Title.Text = "AETHER WALK - " .. AETHER_CONFIG.VERSION
@@ -143,12 +127,11 @@ local function BuildUI()
     Title.TextSize = 14
     Title.BackgroundTransparency = 1
 
-    -- SCROLLING CONTENT
     local Scroll = Instance.new("ScrollingFrame", Main)
     Scroll.Size = UDim2.new(1, -20, 1, -60)
     Scroll.Position = UDim2.new(0, 10, 0, 50)
     Scroll.BackgroundTransparency = 1
-    Scroll.CanvasSize = UDim2.new(0, 0, 1.8, 0)
+    Scroll.CanvasSize = UDim2.new(0, 0, 2.2, 0)
     Scroll.ScrollBarThickness = 0
 
     local List = Instance.new("UIListLayout", Scroll)
@@ -162,7 +145,7 @@ local function BuildUI()
         btn.Text = text
         btn.TextColor3 = color
         btn.Font = Enum.Font.GothamBold
-        btn.TextSize = 13
+        btn.TextSize = 12
         Instance.new("UICorner", btn)
         btn.MouseButton1Down:Connect(callback)
         return btn
@@ -173,63 +156,54 @@ local function BuildUI()
     SpeedBox.Size = UDim2.new(0.95, 0, 0, 45)
     SpeedBox.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     SpeedBox.Text = tostring(AETHER_CONFIG.SPEED)
-    SpeedBox.PlaceholderText = "INPUT SPEED"
     SpeedBox.TextColor3 = AETHER_CONFIG.UI_COLOR
     SpeedBox.Font = Enum.Font.Code
     SpeedBox.TextSize = 25
     SpeedBox.ClearTextOnFocus = false
     Instance.new("UICorner", SpeedBox)
 
-    -- TOGGLE FLY
-    local FlyToggle = CreateButton("FLY ENGINE: OFF", Color3.new(1, 0, 0), function()
+    -- MAIN TOGGLES
+    local FlyToggle = CreateButton("FLY ENGINE: OFF", Color3.new(1, 0.2, 0.2), function()
         AETHER_CONFIG.ENABLED = not AETHER_CONFIG.ENABLED
     end)
 
-    -- THE DUG (PIT SAFETY)
-    CreateButton("THE DUG (HIDE IN PIT)", Color3.new(1, 1, 1), function()
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            -- Tsunami pits are below the surface; we clip the CFrame down instantly
-            LocalPlayer.Character.HumanoidRootPart.CFrame = LocalPlayer.Character.HumanoidRootPart.CFrame * CFrame.new(0, -30, 0)
-        end
-    end)
-
-    -- GOD MODE
-    local GodToggle = CreateButton("TSUNAMI GOD: OFF", Color3.new(1, 0, 0), function()
+    local GodToggle = CreateButton("GOD MODE: OFF", Color3.new(1, 0.2, 0.2), function()
         AETHER_CONFIG.GOD_MODE = not AETHER_CONFIG.GOD_MODE
     end)
 
-    -- TP PANEL TOGGLE (ZONES)
-    CreateButton("--- TELEPORT ZONES ---", Color3.new(0.6, 0.6, 0.6), function() end)
+    CreateButton("THE DUG (CLIP TO PIT)", Color3.new(1, 1, 1), function()
+        LocalPlayer.Character.HumanoidRootPart.CFrame *= CFrame.new(0, -35, 0)
+    end)
+
+    -- COORDINATE TOOLS
+    CreateButton("--- DEV TOOLS ---", Color3.new(0.6, 0.6, 0.6), function() end)
     
+    CreateButton("COPY MY POSITION (F9)", Color3.fromRGB(255, 255, 0), function()
+        local pos = LocalPlayer.Character.HumanoidRootPart.Position
+        print("ZONE COORDS: Vector3.new(" .. math.floor(pos.X) .. ", " .. math.floor(pos.Y) .. ", " .. math.floor(pos.Z) .. ")")
+    end)
+
+    CreateButton("SAVE SPOT", Color3.new(0, 1, 0), function()
+        AETHER_CONFIG.SAVED_POS = LocalPlayer.Character.HumanoidRootPart.CFrame
+    end)
+
+    CreateButton("LOAD SPOT", Color3.new(1, 1, 0), function()
+        if AETHER_CONFIG.SAVED_POS then LocalPlayer.Character.HumanoidRootPart.CFrame = AETHER_CONFIG.SAVED_POS end
+    end)
+
+    -- ZONE TPs
+    CreateButton("--- ZONE TELEPORTS ---", Color3.new(0.6, 0.6, 0.6), function() end)
     for zone, pos in pairs(ZONES) do
-        CreateButton("TP TO " .. zone, Color3.fromRGB(0, 150, 255), function()
-            if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-                LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(pos)
-            end
+        CreateButton("TP TO " .. zone, Color3.fromRGB(0, 180, 255), function()
+            LocalPlayer.Character.HumanoidRootPart.CFrame = CFrame.new(pos)
         end)
     end
 
-    -- SAVE/LOAD
-    CreateButton("--- POSITIONAL MEMORY ---", Color3.new(0.6, 0.6, 0.6), function() end)
-    
-    CreateButton("SAVE CURRENT SPOT", Color3.new(0, 1, 0), function()
-        if LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") then
-            AETHER_CONFIG.SAVED_POS = LocalPlayer.Character.HumanoidRootPart.CFrame
-        end
-    end)
-
-    CreateButton("LOAD SAVED SPOT", Color3.new(1, 1, 0), function()
-        if AETHER_CONFIG.SAVED_POS and LocalPlayer.Character then
-            LocalPlayer.Character.HumanoidRootPart.CFrame = AETHER_CONFIG.SAVED_POS
-        end
-    end)
-
-    -- // UI DYNAMICS //
+    -- UI UPDATES
     RunService.RenderStepped:Connect(function()
         FlyToggle.Text = AETHER_CONFIG.ENABLED and "FLY ENGINE: ON" or "FLY ENGINE: OFF"
         FlyToggle.TextColor3 = AETHER_CONFIG.ENABLED and Color3.new(0, 1, 0.5) or Color3.new(1, 0.2, 0.2)
-        
-        GodToggle.Text = AETHER_CONFIG.GOD_MODE and "TSUNAMI GOD: ON" or "TSUNAMI GOD: OFF"
+        GodToggle.Text = AETHER_CONFIG.GOD_MODE and "GOD MODE: ON" or "GOD MODE: OFF"
         GodToggle.TextColor3 = AETHER_CONFIG.GOD_MODE and Color3.new(0, 1, 0.5) or Color3.new(1, 0.2, 0.2)
     end)
 
@@ -243,28 +217,18 @@ local function BuildUI()
         SpeedBox.Text = tostring(AETHER_CONFIG.SPEED)
     end)
 
-    -- Dragging Logic
-    local dragging, dragInput, dragStart, startPos
-    Main.InputBegan:Connect(function(input)
-        if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true; dragStart = input.Position; startPos = Main.Position
-        end
-    end)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - dragStart
-            Main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-        end
-    end)
-    UserInputService.InputEnded:Connect(function() dragging = false end)
+    -- Dragging
+    local d, dS, sP
+    Main.InputBegan:Connect(function(i) if i.UserInputType == Enum.UserInputType.MouseButton1 or i.UserInputType == Enum.UserInputType.Touch then d = true; dS = i.Position; sP = Main.Position end end)
+    UserInputService.InputChanged:Connect(function(i) if d and (i.UserInputType == Enum.UserInputType.MouseMovement or i.UserInputType == Enum.UserInputType.Touch) then local delta = i.Position - dS; Main.Position = UDim2.new(sP.X.Scale, sP.X.Offset + delta.X, sP.Y.Scale, sP.Y.Offset + delta.Y) end end)
+    UserInputService.InputEnded:Connect(function() d = false end)
 end
 
--- // 7. RUNTIME MASTER LOOPS //
+-- // RUNTIME //
 RunService.Heartbeat:Connect(function(dt)
     ExecuteAether(dt)
     GlobalBypassSync()
 end)
 
--- Initialize
 BuildUI()
-print("[LOADED] Aether-Walk V6.0.1: The Brainrot Anti-Cheat Obliterator.")
+print("[SUCCESS] Aether-Walk V7 Loaded. Use F9 to check copied coordinates.")
