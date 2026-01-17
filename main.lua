@@ -1,6 +1,6 @@
--- // GHOST-SYNC: MOBILE APEX V23.2 //
--- FIXED: Void TP Bug (Added Raycast Ground Check)
--- FIXED: Phantom Return (Synced CFrame Handshake)
+-- // GHOST-SYNC: MOBILE APEX V23.3 //
+-- BYPASS: Validated Move Sequence (Anti-Cheat Fix)
+-- GRID: Safe-Hole Grid (Interval 84 | Y -3)
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -15,7 +15,7 @@ local AETHER_CONFIG = {
     ENABLED = false,
     PHANTOM = false,
     SPEED = 85,
-    VERSION = "V23.2.0 - Stable Apex",
+    VERSION = "V23.3.0 - Anti-Cheat Bypass",
     HOLE_X_OFFSET = 282,
     HOLE_INTERVAL = 84,
     SAFE_Y = -3,
@@ -31,39 +31,14 @@ local Internal = {
     CurrentFrame = nil
 }
 
--- // 2. VOID-SHIELD MATH //
+-- // 2. GRID AUTHORITY //
 local function GetNearestSafeHole(pos)
     local relativeX = pos.X - AETHER_CONFIG.HOLE_X_OFFSET
     local snapX = math.round(relativeX / AETHER_CONFIG.HOLE_INTERVAL) * AETHER_CONFIG.HOLE_INTERVAL
-    local targetX = snapX + AETHER_CONFIG.HOLE_X_OFFSET
-    
-    -- VOID SHIELD: If target is too far out or Y is dangerous, default to safety
-    if math.abs(targetX) > 50000 then return Vector3.new(AETHER_CONFIG.HOLE_X_OFFSET, AETHER_CONFIG.SAFE_Y, pos.Z) end
-    
-    return Vector3.new(targetX, AETHER_CONFIG.SAFE_Y, pos.Z)
+    return Vector3.new(snapX + AETHER_CONFIG.HOLE_X_OFFSET, AETHER_CONFIG.SAFE_Y, pos.Z)
 end
 
--- // 3. FIXED PHANTOM RETURN LOGIC //
-local function CleanupGhost()
-    local Root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-    
-    if Internal.Ghost and Root then
-        -- FIXED: Grab the position BEFORE deleting the ghost
-        local GhostRoot = Internal.Ghost:FindFirstChild("HumanoidRootPart")
-        if GhostRoot then
-            local finalPos = GhostRoot.CFrame
-            Internal.Ghost:Destroy() -- Now we can delete it
-            Internal.Ghost = nil
-            
-            Root.Anchored = false
-            Root.CFrame = finalPos -- Move real body to where phantom was
-        end
-    end
-    
-    Camera.CameraSubject = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-end
-
--- // 4. MOVEMENT: HOLE-HOP STUTTER //
+-- // 3. ANTI-CHEAT BYPASS: VALIDATED HOLE-HOP //
 local function SafeTeleport(targetCF)
     local Root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not Root or Internal.IsWarpping then return end
@@ -71,23 +46,58 @@ local function SafeTeleport(targetCF)
     Internal.IsWarpping = true
     local startPos = Root.Position
     local endPos = targetCF.Position
-    local dist = (startPos - endPos).Magnitude
+    local fullDist = (startPos - endPos).Magnitude
     
-    if dist > 20 then
-        local steps = math.clamp(math.floor(dist/25), 3, 10)
-        for i = 1, steps do
-            local alpha = i/steps
-            local midPoint = startPos:Lerp(endPos, alpha)
-            Root.CFrame = CFrame.new(GetNearestSafeHole(midPoint))
-            task.wait(0.06)
+    -- We now move hole-by-hole. The Anti-Cheat flags "Gaps". 
+    -- By landing in EVERY hole on the way, there is no "Gap".
+    local currentX = startPos.X
+    local direction = (endPos.X > startPos.X) and 1 or -1
+    
+    -- Calculate how many holes are between start and end
+    local totalHoles = math.floor(math.abs(endPos.X - startPos.X) / AETHER_CONFIG.HOLE_INTERVAL)
+    
+    if totalHoles > 0 then
+        for i = 1, totalHoles do
+            if not AETHER_CONFIG.ACTIVE then break end
+            
+            -- Calculate next hole coordinate
+            local nextX = startPos.X + (direction * (i * AETHER_CONFIG.HOLE_INTERVAL))
+            local targetHole = Vector3.new(nextX, AETHER_CONFIG.SAFE_Y, endPos.Z)
+            
+            -- Step 1: Small Jitter to trick Velocity Checks
+            Root.AssemblyLinearVelocity = Vector3.new(0, 5, 0)
+            
+            -- Step 2: Move to Hole
+            Root.CFrame = CFrame.new(targetHole)
+            
+            -- Step 3: Wait for Server Handshake (Critical for Bypass)
+            RunService.Heartbeat:Wait() 
+            task.wait(0.02) -- Tiny buffer to let AC reset
         end
     end
     
+    -- Final Arrival
     Root.CFrame = targetCF
+    task.wait(0.1)
     Internal.IsWarpping = false
 end
 
--- // 5. PHANTOM & FLY ENGINE //
+-- // 4. PHANTOM & FLY //
+local function CleanupGhost()
+    local Root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+    if Internal.Ghost and Root then
+        local GhostRoot = Internal.Ghost:FindFirstChild("HumanoidRootPart")
+        if GhostRoot then
+            local finalCF = GhostRoot.CFrame
+            Internal.Ghost:Destroy()
+            Internal.Ghost = nil
+            -- Use the Validated Teleport to return to avoid AC kick
+            SafeTeleport(finalCF)
+        end
+    end
+    Camera.CameraSubject = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+end
+
 local function ExecuteLogic(dt)
     if not AETHER_CONFIG.ACTIVE then return end
     local Char = LocalPlayer.Character
@@ -106,20 +116,21 @@ local function ExecuteLogic(dt)
                 GhostRoot.CFrame = rot + (MoveDir * AETHER_CONFIG.SPEED * dt)
             end
         end
-        Root.Anchored = true -- Keep real body safe
+        Root.CFrame = CFrame.new(GetNearestSafeHole(Root.Position)) -- Force real body into hole
+        Root.Anchored = true
     elseif AETHER_CONFIG.ENABLED then
         Root.Anchored = false
-        local MoveDir = Hum.MoveDirection
-        if MoveDir.Magnitude > 0 then
-            Root.AssemblyLinearVelocity = Camera.CFrame.LookVector * AETHER_CONFIG.SPEED
-            Root.CFrame += (Camera.CFrame.LookVector * AETHER_CONFIG.SPEED * dt * 0.1)
+        if Hum.MoveDirection.Magnitude > 0 then
+            local TargetVel = Camera.CFrame.LookVector * AETHER_CONFIG.SPEED
+            Root.AssemblyLinearVelocity = TargetVel
+            Root.CFrame += (TargetVel * dt * 0.1)
         else
-            Root.AssemblyLinearVelocity = Vector3.new(0, 1.1, 0)
+            Root.AssemblyLinearVelocity = Vector3.new(0, 1, 0)
         end
     end
 end
 
--- // 6. UI CONSTRUCTION //
+-- // 5. UI CORE //
 local function AttachMobileDrag(frame)
     frame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
@@ -162,14 +173,12 @@ local function BuildUI()
     AttachMobileDrag(MainToggle)
 
     local Main = Instance.new("Frame", Screen)
-    Main.Size = UDim2.new(0, 350, 0, 220)
+    Main.Size = UDim2.new(0, 350, 0, 240)
     Main.Position = UDim2.new(0.5, -175, 0.3, 0)
     Main.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
     Main.Visible = false
     Instance.new("UICorner", Main)
-    local S = Instance.new("UIStroke", Main)
-    S.Color = Color3.fromRGB(0, 255, 180)
-    S.Thickness = 2
+    Instance.new("UIStroke", Main).Color = Color3.fromRGB(0, 255, 180)
     AttachMobileDrag(Main)
 
     MainToggle.MouseButton1Down:Connect(function() Main.Visible = not Main.Visible end)
@@ -184,7 +193,7 @@ local function BuildUI()
 
     local function Btn(txt, call)
         local b = Instance.new("TextButton", List)
-        b.Size = UDim2.new(1, 0, 0, 40)
+        b.Size = UDim2.new(1, 0, 0, 45)
         b.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
         b.Text = txt
         b.TextColor3 = Color3.new(0.8, 0.8, 0.8)
@@ -214,13 +223,12 @@ local function BuildUI()
             Root.CFrame = CFrame.new(GetNearestSafeHole(Root.Position))
             Root.Anchored = true
         else
-            -- FIXED: Cleanup now handles the TP to the ghost position correctly
             CleanupGhost()
         end
         b.Text = AETHER_CONFIG.PHANTOM and "PHANTOM: ACTIVE" or "PHANTOM: OFF"
     end)
 
-    Btn("FORCE DUG SNAP", function()
+    Btn("FORCE DUG (HOLE-BY-HOLE)", function()
         local Root = LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
         if Root then SafeTeleport(CFrame.new(GetNearestSafeHole(Root.Position))) end
     end)
