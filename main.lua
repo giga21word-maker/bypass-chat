@@ -1,5 +1,5 @@
--- // CHRONOS SENTINEL V3.6 PREMIUM //
--- STATUS: Physics Fix + Stable Fling + Hyper-Anim Sync
+-- // CHRONOS SENTINEL V3.7 PREMIUM //
+-- STATUS: Absolute Fling Stability + Jump Velocity Fix
 -- FEATURES: Moon-Jump, Turbo-Climb, Mobile-Fling, Chat-Bypass
 
 local Players = game:GetService("Players")
@@ -68,7 +68,7 @@ local function FullReset()
     if Internal.CurrentHum then
         Internal.CurrentHum.WalkSpeed = 16
         Internal.CurrentHum.JumpPower = 50
-        Internal.CurrentHum.UseJumpPower = false -- Restore default behavior
+        Internal.CurrentHum.UseJumpPower = false
         local animator = Internal.CurrentHum:FindFirstChildOfClass("Animator")
         if animator then
             for _, track in pairs(animator:GetPlayingAnimationTracks()) do
@@ -78,32 +78,41 @@ local function FullReset()
     end
 end
 
--- // 4. STABILIZED FLING ENGINE (FIXED STABILITY) //
+-- // 4. STABILIZED FLING ENGINE (V3.7 HYBRID) //
 local function ManageFling(state)
     if not Internal.CurrentRoot then return end
     local spin = Internal.CurrentRoot:FindFirstChild("UltraSpin")
+    local thrust = Internal.CurrentRoot:FindFirstChild("UltraThrust")
     
     if state then
         if not spin then
             spin = Instance.new("BodyAngularVelocity")
             spin.Name = "UltraSpin"
             spin.Parent = Internal.CurrentRoot
-            spin.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-            spin.P = 1250
+            spin.MaxTorque = Vector3.new(0, math.huge, 0)
+            spin.P = 15000 -- Increased Power for stability
             spin.AngularVelocity = Vector3.new(0, CHRONOS_SETTINGS.FLING_STRENGTH, 0)
+        end
+        if not thrust then
+            thrust = Instance.new("BodyThrust")
+            thrust.Name = "UltraThrust"
+            thrust.Parent = Internal.CurrentRoot
+            thrust.Force = Vector3.new(500, 0, 500) -- Creates the "Orbit" kill zone
+            thrust.Location = Internal.CurrentRoot.Position
         end
         for _, part in pairs(Internal.CurrentChar:GetDescendants()) do
             if part:IsA("BasePart") then part.CanCollide = false end
         end
     else
         if spin then spin:Destroy() end
+        if thrust then thrust:Destroy() end
         for _, part in pairs(Internal.CurrentChar:GetDescendants()) do
             if part:IsA("BasePart") then part.CanCollide = true end
         end
     end
 end
 
--- // 5. ADVANCED GUI (V3.6) //
+-- // 5. ADVANCED GUI (V3.7) //
 local function BuildUI()
     if CoreGui:FindFirstChild("ChronosUltra") then CoreGui.ChronosUltra:Destroy() end
     
@@ -133,7 +142,7 @@ local function BuildUI()
     local Title = Instance.new("TextLabel", Header)
     Title.Size = UDim2.new(1, -70, 1, 0)
     Title.Position = UDim2.new(0, 10, 0, 0)
-    Title.Text = "CHRONOS PREMIUM V3.6"
+    Title.Text = "CHRONOS PREMIUM V3.7"
     Title.TextColor3 = Color3.new(1, 1, 1)
     Title.Font = Enum.Font.Code
     Title.BackgroundTransparency = 1
@@ -181,7 +190,6 @@ local function BuildUI()
     FBtn.ZIndex = 6
     Instance.new("UICorner", FBtn)
 
-    -- // FIXED TOGGLE INTERACTIONS //
     EBtn.MouseButton1Click:Connect(function()
         CHRONOS_SETTINGS.EGOR_MODE = not CHRONOS_SETTINGS.EGOR_MODE
         if not CHRONOS_SETTINGS.EGOR_MODE then FullReset() end
@@ -196,7 +204,6 @@ local function BuildUI()
         FBtn.TextColor3 = CHRONOS_SETTINGS.FLING_MODE and Color3.new(1, 0.2, 0.2) or Color3.new(1, 1, 1)
     end)
 
-    -- // RAINBOW GLOW //
     task.spawn(function()
         while task.wait() and CHRONOS_SETTINGS.ACTIVE do
             if CHRONOS_SETTINGS.EGOR_MODE then
@@ -207,7 +214,6 @@ local function BuildUI()
         end
     end)
 
-    -- // FIXED MINIMIZE/CLOSE //
     MinBtn.MouseButton1Click:Connect(function()
         CHRONOS_SETTINGS.MINIMIZED = not CHRONOS_SETTINGS.MINIMIZED
         local TargetSize = CHRONOS_SETTINGS.MINIMIZED and UDim2.new(0, 220, 0, 35) or UDim2.new(0, 220, 0, 160)
@@ -226,7 +232,6 @@ local function BuildUI()
         Screen:Destroy() 
     end)
 
-    -- // DRAG SYSTEM //
     Header.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             Internal.Dragging = true
@@ -245,15 +250,16 @@ local function BuildUI()
     end)
 end
 
--- // 6. RUNTIME (PHYSICS OPTIMIZED) //
+-- // 6. RUNTIME (V3.7 OPTIMIZED) //
 RunService.Heartbeat:Connect(function()
     if not Internal.CurrentRoot or not Internal.CurrentHum or not CHRONOS_SETTINGS.ACTIVE then return end
     
     if CHRONOS_SETTINGS.EGOR_MODE then
         workspace.Gravity = CHRONOS_SETTINGS.MOON_GRAVITY
         
-        -- Improved Jump Handling: Only apply power if the player is actually in a jump state
-        if Internal.CurrentHum.Jump then
+        -- Apply JumpPower only once when needed to prevent jitter
+        if Internal.CurrentHum.JumpPower ~= CHRONOS_SETTINGS.EGOR_JUMP_POWER then
+            Internal.CurrentHum.UseJumpPower = true
             Internal.CurrentHum.JumpPower = CHRONOS_SETTINGS.EGOR_JUMP_POWER
         end
         
@@ -262,7 +268,6 @@ RunService.Heartbeat:Connect(function()
             local animator = Internal.CurrentHum:FindFirstChildOfClass("Animator")
             if animator then
                 for _, t in pairs(animator:GetPlayingAnimationTracks()) do
-                    -- High-speed sync logic
                     if t.Name:lower():find("run") or t.Name:lower():find("walk") or t.Name:lower():find("idle") then
                         t:AdjustSpeed(CHRONOS_SETTINGS.ANIM_MULTIPLIER)
                     end
@@ -272,8 +277,8 @@ RunService.Heartbeat:Connect(function()
     end
 
     if CHRONOS_SETTINGS.FLING_MODE then
-        -- Apply rotational stability via CFrame to prevent "Slow Motion" physics
-        Internal.CurrentRoot.CFrame = Internal.CurrentRoot.CFrame * CFrame.Angles(0, math.rad(90), 0)
+        -- Physics-based rotation ONLY (No CFrame jitter)
+        Internal.CurrentRoot.RotVelocity = Vector3.new(0, CHRONOS_SETTINGS.FLING_STRENGTH, 0)
     end
 end)
 
