@@ -1,6 +1,7 @@
--- // GHOST-SYNC: MOBILE APEX V23.6 //
--- BYPASS: Raycast-Height Validation + Velocity Spoof
--- SAFETY: Void-Check + 5-Chunk Segmenting
+-- // GHOST-SYNC: NEURO-LINK V23.7 //
+-- FEATURE: Essence Retrieval (Brain Rot Interaction)
+-- BYPASS: High-Frequency Jitter Stutter
+-- SAFETY: Vector-Sync Anchor
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -10,104 +11,79 @@ local Workspace = game:GetService("Workspace")
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
--- // 1. CONFIGURATION //
+-- // 1. CONFIGURATION AUTHORITY //
 local AETHER_CONFIG = {
     ENABLED = false,
     PHANTOM = false,
     SPEED = 85,
-    VERSION = "V23.6.0 - Sentinel Shield",
+    VERSION = "V23.7.0 - Neuro-Link",
     HOLE_X_OFFSET = 282,
     HOLE_INTERVAL = 84,
-    SAFE_Y = -3, -- Default target, but now validated
+    SAFE_Y = -3,
     ACTIVE = true
 }
 
 local Internal = {
     Ghost = nil,
+    GrabbedObject = nil,
     IsWarpping = false,
     Connections = {},
     Dragging = false,
     DragOffset = Vector2.new(0, 0)
 }
 
--- // 2. SENTINEL HEIGHT VALIDATION //
-local function GetSafePosition(pos)
-    -- Raycast down to find the floor
-    local rayParam = RaycastParams.new()
-    rayParam.FilterDescendantsInstances = {LocalPlayer.Character, Internal.Ghost}
-    rayParam.FilterType = Enum.RaycastFilterType.Exclude
-    
-    local ray = Workspace:Raycast(pos + Vector3.new(0, 50, 0), Vector3.new(0, -100, 0), rayParam)
-    
-    local targetX = (math.round((pos.X - AETHER_CONFIG.HOLE_X_OFFSET) / AETHER_CONFIG.HOLE_INTERVAL) * AETHER_CONFIG.HOLE_INTERVAL) + AETHER_CONFIG.HOLE_X_OFFSET
-    
-    if ray then
-        -- Floor found! Stay exactly at the floor level or slightly below (-3)
-        return Vector3.new(targetX, ray.Position.Y - 2.5, pos.Z)
-    else
-        -- NO FLOOR! Stay at safe Y-3 but don't drop further
-        return Vector3.new(targetX, AETHER_CONFIG.SAFE_Y, pos.Z)
-    end
+-- // 2. INTERACTION MATH //
+local function GetNearestSafeHole(pos)
+    local relativeX = pos.X - AETHER_CONFIG.HOLE_X_OFFSET
+    local snapX = math.round(relativeX / AETHER_CONFIG.HOLE_INTERVAL) * AETHER_CONFIG.HOLE_INTERVAL
+    return Vector3.new(snapX + AETHER_CONFIG.HOLE_X_OFFSET, AETHER_CONFIG.SAFE_Y, pos.Z)
 end
 
--- // 3. CHUNK-TP (5-HOLE STEP) //
-local function SentinelTeleport(targetCF)
+-- // 3. STUTTER TELEPORT (FIXED) //
+local function StutterTP(targetCF)
     local Root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not Root or Internal.IsWarpping then return end
     
     Internal.IsWarpping = true
     local startPos = Root.Position
     local endPos = targetCF.Position
+    local dist = (startPos - endPos).Magnitude
     
-    local direction = (endPos.X > startPos.X) and 1 or -1
-    local totalHoles = math.floor(math.abs(endPos.X - startPos.X) / AETHER_CONFIG.HOLE_INTERVAL)
-
-    if totalHoles > 0 then
-        for i = 1, totalHoles do
-            if not AETHER_CONFIG.ACTIVE then break end
+    if dist > 15 then
+        local steps = math.clamp(math.floor(dist/10), 5, 25)
+        for i = 1, steps do
+            local alpha = i/steps
+            local lerpPos = startPos:Lerp(endPos, alpha)
             
-            -- Wait 2s every 5 holes to clear speed history
-            if i % 5 == 0 then
-                Root.AssemblyLinearVelocity = Vector3.new(0, -1, 0) -- Spoof falling
-                task.wait(2)
-            end
-            
-            local nextX = startPos.X + (direction * (i * AETHER_CONFIG.HOLE_INTERVAL))
-            local safeTarget = GetSafePosition(Vector3.new(nextX, AETHER_CONFIG.SAFE_Y, endPos.Z))
-            
-            -- Add tiny Jitter to bypass "Pixel-Perfect" detection
-            local jitter = Vector3.new(math.random(-10,10)/100, 0, math.random(-10,10)/100)
-            Root.CFrame = CFrame.new(safeTarget + jitter)
+            -- High-Freq Jitter: Jumps 0.2 studs up/down/left/right to spoof movement
+            local jitter = Vector3.new(math.random(-2,2)/10, math.random(-2,2)/10, math.random(-2,2)/10)
+            Root.CFrame = CFrame.new(GetNearestSafeHole(lerpPos) + jitter)
             
             RunService.Heartbeat:Wait()
         end
     end
     
     Root.CFrame = targetCF
-    task.wait(0.5)
     Internal.IsWarpping = false
 end
 
--- // 4. PHANTOM STOP //
-local function StopPhantom()
-    if Internal.Ghost then
-        local GhostRoot = Internal.Ghost:FindFirstChild("HumanoidRootPart")
-        if GhostRoot then
-            local targetPos = GhostRoot.Position
-            local finalCF = CFrame.new(GetSafePosition(targetPos))
-            
-            Internal.Ghost:Destroy()
-            Internal.Ghost = nil
-            Camera.CameraSubject = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-            
-            task.spawn(function()
-                SentinelTeleport(finalCF)
-            end)
+-- // 4. BRAIN ROT RETRIEVAL SYSTEM //
+local function ScanForInteractable()
+    if not Internal.Ghost then return end
+    local GhostPos = Internal.Ghost.PrimaryPart.Position
+    
+    -- Looks for objects nearby the Phantom (Brain Rot, etc)
+    for _, item in pairs(Workspace:GetChildren()) do
+        if item:IsA("BasePart") and not item.Anchored and (item.Position - GhostPos).Magnitude < 10 then
+            return item
+        elseif item:IsA("Model") and item.PrimaryPart and (item.PrimaryPart.Position - GhostPos).Magnitude < 10 then
+            return item.PrimaryPart
         end
     end
+    return nil
 end
 
--- // 5. RUNTIME //
+-- // 5. CORE LOGIC //
 local function ExecuteLogic(dt)
     if not AETHER_CONFIG.ACTIVE then return end
     local Char = LocalPlayer.Character
@@ -118,6 +94,7 @@ local function ExecuteLogic(dt)
     if AETHER_CONFIG.PHANTOM and Internal.Ghost then
         Camera.CameraSubject = Internal.Ghost:FindFirstChildOfClass("Humanoid")
         local GhostRoot = Internal.Ghost:FindFirstChild("HumanoidRootPart")
+        
         if GhostRoot then
             local MoveDir = Hum.MoveDirection
             if MoveDir.Magnitude > 0 then
@@ -125,50 +102,47 @@ local function ExecuteLogic(dt)
                 local rot = CFrame.lookAt(GhostRoot.Position, GhostRoot.Position + Vector3.new(look.X, 0, look.Z))
                 GhostRoot.CFrame = rot + (MoveDir * AETHER_CONFIG.SPEED * dt)
             end
+            
+            -- Interaction: Keep grabbed object at Phantom
+            if Internal.GrabbedObject then
+                Internal.GrabbedObject.CFrame = GhostRoot.CFrame * CFrame.new(0, 0, -3)
+                Internal.GrabbedObject.AssemblyLinearVelocity = Vector3.zero
+            end
         end
-        -- Safe-Lock real body
-        Root.CFrame = CFrame.new(GetSafePosition(Root.Position))
+        
+        -- ANCHOR REAL BODY IN SAFE HOLE
+        Root.CFrame = CFrame.new(GetNearestSafeHole(Root.Position))
         Root.Anchored = true
-    elseif AETHER_CONFIG.ENABLED then
-        Root.Anchored = false
-        if Hum.MoveDirection.Magnitude > 0 then
-            Root.AssemblyLinearVelocity = Camera.CFrame.LookVector * AETHER_CONFIG.SPEED
-        else
-            Root.AssemblyLinearVelocity = Vector3.new(0, 1.1, 0)
-        end
+        Root.AssemblyLinearVelocity = Vector3.zero
     end
 end
 
 -- // 6. UI CONSTRUCTION //
 local function BuildUI()
-    if CoreGui:FindFirstChild("AetherApex") then CoreGui.AetherApex:Destroy() end
+    if CoreGui:FindFirstChild("NeuroApex") then CoreGui.NeuroApex:Destroy() end
     local Screen = Instance.new("ScreenGui", CoreGui)
-    Screen.Name = "AetherApex"
+    Screen.Name = "NeuroApex"
     
     local Main = Instance.new("Frame", Screen)
-    Main.Size = UDim2.new(0, 260, 0, 160)
-    Main.Position = UDim2.new(0.5, -130, 0.4, 0)
-    Main.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
+    Main.Size = UDim2.new(0, 240, 0, 180)
+    Main.Position = UDim2.new(0.5, -120, 0.4, 0)
+    Main.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
     Instance.new("UICorner", Main)
     Instance.new("UIStroke", Main).Color = Color3.fromRGB(0, 255, 180)
 
-    local Title = Instance.new("TextLabel", Main)
-    Title.Size = UDim2.new(1, 0, 0, 40)
-    Title.Text = "SENTINEL APEX V23.6"
-    Title.TextColor3 = Color3.new(1,1,1)
-    Title.Font = Enum.Font.GothamBold
-    Title.BackgroundTransparency = 1
+    local function CreateBtn(txt, pos, call)
+        local b = Instance.new("TextButton", Main)
+        b.Size = UDim2.new(0, 200, 0, 40)
+        b.Position = pos
+        b.Text = txt
+        b.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+        b.TextColor3 = Color3.new(1,1,1)
+        b.Font = Enum.Font.GothamBold
+        Instance.new("UICorner", b)
+        b.MouseButton1Down:Connect(function() call(b) end)
+    end
 
-    local B = Instance.new("TextButton", Main)
-    B.Size = UDim2.new(0, 220, 0, 50)
-    B.Position = UDim2.new(0, 20, 0, 60)
-    B.Text = "TOGGLE PHANTOM"
-    B.Font = Enum.Font.GothamBold
-    B.TextColor3 = Color3.new(1,1,1)
-    B.BackgroundColor3 = Color3.fromRGB(25,25,25)
-    Instance.new("UICorner", B)
-
-    B.MouseButton1Down:Connect(function()
+    CreateBtn("TOGGLE PHANTOM", UDim2.new(0.1, 0, 0.15, 0), function(b)
         AETHER_CONFIG.PHANTOM = not AETHER_CONFIG.PHANTOM
         if AETHER_CONFIG.PHANTOM then
             local Char = LocalPlayer.Character
@@ -178,12 +152,37 @@ local function BuildUI()
             for _, v in pairs(Internal.Ghost:GetDescendants()) do
                 if v:IsA("BasePart") then v.Transparency = 0.5 v.CanCollide = false v.Anchored = true end
             end
-            B.Text = "ACTIVE (GHOST OUT)"
+            b.Text = "PHANTOM: ON"
         else
-            B.Text = "5-CHUNK RETURN..."
-            StopPhantom()
+            if Internal.Ghost then
+                local finalPos = Internal.Ghost.PrimaryPart.CFrame
+                Internal.Ghost:Destroy()
+                Internal.Ghost = nil
+                Camera.CameraSubject = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
+                StutterTP(finalPos)
+            end
+            b.Text = "PHANTOM: OFF"
+        end
+    end)
+
+    CreateBtn("GRAB NEARBY", UDim2.new(0.1, 0, 0.5, 0), function(b)
+        if not Internal.GrabbedObject then
+            local target = ScanForInteractable()
+            if target then
+                Internal.GrabbedObject = target
+                b.Text = "GRABBED!"
+                b.TextColor3 = Color3.fromRGB(0, 255, 180)
+            else
+                b.Text = "NOTHING NEARBY"
+                task.wait(1)
+                b.Text = "GRAB NEARBY"
+            end
+        else
+            Internal.GrabbedObject = nil
+            b.Text = "RELEASED"
+            b.TextColor3 = Color3.new(1,1,1)
             task.wait(1)
-            B.Text = "TOGGLE PHANTOM"
+            b.Text = "GRAB NEARBY"
         end
     end)
 end
