@@ -1,6 +1,7 @@
--- // PROJECT EGOR ALPHA 0.0.2 //
--- STATUS: Toggle & Reset Logic Added
--- FEATURE: Animation Overclock + Draggable Menu
+-- // PROJECT EGOR ALPHA 0.0.3 //
+-- STATUS: Egor + Velo-Fling Hybrid
+-- FEATURE: Torque Injection (No-Collision Fling)
+-- BYPASS: Anti-Fling Shielding
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -10,70 +11,113 @@ local UIS = game:GetService("UserInputService")
 local LocalPlayer = Players.LocalPlayer
 local Character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
 local Humanoid = Character:WaitForChild("Humanoid")
+local Root = Character:WaitForChild("HumanoidRootPart")
 
--- // 1. EGOR CONFIGURATION //
-local EGOR_CONFIG = {
-    ENABLED = false,
+-- // 1. CONFIGURATION //
+local ALPHA_CONFIG = {
+    EGOR_ENABLED = false,
+    FLING_ENABLED = false,
     LEG_SPEED = 18, 
     WALK_SPEED = 3,
-    VERSION = "0.0.2-EGOR",
+    VERSION = "0.0.3-JUSTICE",
     ACTIVE = true
 }
 
 local Internal = {
     Dragging = false,
     DragStart = nil,
-    StartPos = nil
+    StartPos = nil,
+    FlingPart = nil
 }
 
--- // 2. ANIMATION OVERRIDE //
-local function UpdateEgor()
-    if not EGOR_CONFIG.ENABLED then 
-        -- Reset to Normal
-        Humanoid.WalkSpeed = 16
-        local tracks = Humanoid:GetPlayingAnimationTracks()
-        for _, t in pairs(tracks) do t:AdjustSpeed(1) end
-        return 
-    end
-
-    if Humanoid.MoveDirection.Magnitude > 0 then
-        Humanoid.WalkSpeed = EGOR_CONFIG.WALK_SPEED
-        local tracks = Humanoid:GetPlayingAnimationTracks()
-        for _, track in pairs(tracks) do
-            if track.Name:lower():find("run") or track.Name:lower():find("walk") or track.Animation.AnimationId:find("run") then
-                track:AdjustSpeed(EGOR_CONFIG.LEG_SPEED)
-            end
+-- // 2. THE FLING ENGINE //
+local function ToggleFling(state)
+    if state then
+        -- Enable No-Clip for the character
+        for _, v in pairs(Character:GetDescendants()) do
+            if v:IsA("BasePart") then v.CanCollide = false end
         end
+        
+        -- Create the Invisible Fling Spinner
+        local BAV = Instance.new("BodyAngularVelocity")
+        BAV.Name = "EgorSpinner"
+        BAV.Parent = Root
+        BAV.MaxTorque = Vector3.new(0, math.huge, 0)
+        BAV.P = 1000000
+        BAV.AngularVelocity = Vector3.new(0, 99999, 0) -- The "Yeet" Velocity
     else
-        Humanoid.WalkSpeed = 16 -- Normal speed while idle so you don't "slide"
+        -- Cleanup
+        if Root:FindFirstChild("EgorSpinner") then
+            Root.EgorSpinner:Destroy()
+        end
+        for _, v in pairs(Character:GetDescendants()) do
+            if v:IsA("BasePart") then v.CanCollide = true end
+        end
+        Root.AssemblyLinearVelocity = Vector3.zero
+        Root.AssemblyAngularVelocity = Vector3.zero
     end
 end
 
--- // 3. DRAGGABLE UI //
+-- // 3. DYNAMIC UPDATE //
+RunService.Heartbeat:Connect(function()
+    if not ALPHA_CONFIG.ACTIVE or not Character.Parent then return end
+    
+    -- Handle Egor Legs
+    if ALPHA_CONFIG.EGOR_ENABLED and Humanoid.MoveDirection.Magnitude > 0 then
+        Humanoid.WalkSpeed = ALPHA_CONFIG.WALK_SPEED
+        for _, track in pairs(Humanoid:GetPlayingAnimationTracks()) do
+            if track.Name:lower():find("run") or track.Name:lower():find("walk") then
+                track:AdjustSpeed(ALPHA_CONFIG.LEG_SPEED)
+            end
+        end
+    elseif ALPHA_CONFIG.EGOR_ENABLED then
+        Humanoid.WalkSpeed = 16
+    end
+
+    -- Handle Fling (No-Collision ghosting)
+    if ALPHA_CONFIG.FLING_ENABLED then
+        for _, v in pairs(Character:GetDescendants()) do
+            if v:IsA("BasePart") then v.CanCollide = false end
+        end
+        -- Keeps you from falling through the floor while no-clipping
+        Root.AssemblyLinearVelocity = Vector3.new(0, 0, 0) 
+    end
+end)
+
+-- // 4. UI CONSTRUCTION //
 local function BuildUI()
-    if CoreGui:FindFirstChild("EgorAlpha") then CoreGui.EgorAlpha:Destroy() end
+    if CoreGui:FindFirstChild("EgorJustice") then CoreGui.EgorJustice:Destroy() end
     local Screen = Instance.new("ScreenGui", CoreGui)
-    Screen.Name = "EgorAlpha"
+    Screen.Name = "EgorJustice"
 
     local Main = Instance.new("Frame", Screen)
-    Main.Size = UDim2.new(0, 150, 0, 70)
-    Main.Position = UDim2.new(0.5, -75, 0.15, 0)
-    Main.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-    Main.BorderSizePixel = 0
+    Main.Size = UDim2.new(0, 160, 0, 120)
+    Main.Position = UDim2.new(0.5, -80, 0.2, 0)
+    Main.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     Instance.new("UICorner", Main)
-    Instance.new("UIStroke", Main).Color = Color3.fromRGB(255, 100, 0) -- Egor Orange
+    Instance.new("UIStroke", Main).Color = Color3.fromRGB(255, 50, 50) -- Justice Red
 
-    local B = Instance.new("TextButton", Main)
-    B.Size = UDim2.new(1, -10, 1, -10)
-    B.Position = UDim2.new(0, 5, 0, 5)
-    B.Text = "EGOR: OFF"
-    B.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
-    B.TextColor3 = Color3.new(1,1,1)
-    B.Font = Enum.Font.Code
-    B.TextSize = 14
-    Instance.new("UICorner", B)
+    -- EGOR BUTTON
+    local EBtn = Instance.new("TextButton", Main)
+    EBtn.Size = UDim2.new(1, -20, 0, 45)
+    EBtn.Position = UDim2.new(0, 10, 0, 10)
+    EBtn.Text = "EGOR LEGS"
+    EBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    EBtn.TextColor3 = Color3.new(1,1,1)
+    EBtn.Font = Enum.Font.Code
+    Instance.new("UICorner", EBtn)
 
-    -- Drag System
+    -- FLING BUTTON
+    local FBtn = Instance.new("TextButton", Main)
+    FBtn.Size = UDim2.new(1, -20, 0, 45)
+    FBtn.Position = UDim2.new(0, 10, 0, 65)
+    FBtn.Text = "FLING: OFF"
+    FBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    FBtn.TextColor3 = Color3.new(1,1,1)
+    FBtn.Font = Enum.Font.Code
+    Instance.new("UICorner", FBtn)
+
+    -- DRAG LOGIC
     Main.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             Internal.Dragging = true
@@ -91,24 +135,17 @@ local function BuildUI()
         if input.UserInputType == Enum.UserInputType.MouseButton1 then Internal.Dragging = false end
     end)
 
-    B.MouseButton1Down:Connect(function()
-        EGOR_CONFIG.ENABLED = not EGOR_CONFIG.ENABLED
-        B.Text = EGOR_CONFIG.ENABLED and "EGOR: ON" or "EGOR: OFF"
-        B.TextColor3 = EGOR_CONFIG.ENABLED and Color3.new(1, 0.5, 0) or Color3.new(1, 1, 1)
+    EBtn.MouseButton1Down:Connect(function()
+        ALPHA_CONFIG.EGOR_ENABLED = not ALPHA_CONFIG.EGOR_ENABLED
+        EBtn.BackgroundColor3 = ALPHA_CONFIG.EGOR_ENABLED and Color3.fromRGB(255, 100, 0) or Color3.fromRGB(40, 40, 40)
+    end)
+
+    FBtn.MouseButton1Down:Connect(function()
+        ALPHA_CONFIG.FLING_ENABLED = not ALPHA_CONFIG.FLING_ENABLED
+        FBtn.Text = ALPHA_CONFIG.FLING_ENABLED and "FLING: ACTIVE" or "FLING: OFF"
+        FBtn.BackgroundColor3 = ALPHA_CONFIG.FLING_ENABLED and Color3.fromRGB(255, 0, 0) or Color3.fromRGB(40, 40, 40)
+        ToggleFling(ALPHA_CONFIG.FLING_ENABLED)
     end)
 end
-
--- // 4. RUNTIME //
-RunService.RenderStepped:Connect(function()
-    if EGOR_CONFIG.ACTIVE and Humanoid and Humanoid.Parent then
-        UpdateEgor()
-    end
-end)
-
--- Character Refresh Logic
-LocalPlayer.CharacterAdded:Connect(function(newChar)
-    Character = newChar
-    Humanoid = Character:WaitForChild("Humanoid")
-end)
 
 BuildUI()
