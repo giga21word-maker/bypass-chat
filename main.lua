@@ -1,5 +1,5 @@
--- // CHRONOS SENTINEL V3.3 PREMIUM //
--- STATUS: Minimize Fix + Toggle Bug Fix + Instant Boot
+-- // CHRONOS SENTINEL V3.4 PREMIUM //
+-- STATUS: Minimize Fix + Toggle Sync + Rainbow Glow
 -- FEATURES: Moon-Jump, Turbo-Climb, Mobile-Fling, Chat-Bypass
 
 local Players = game:GetService("Players")
@@ -41,7 +41,9 @@ local Internal = {
 -- // 2. THE LOADINGSTRING (FLETCHER) //
 task.spawn(function()
     pcall(function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/giga21word-maker/bypass-chat/main/main.lua"))()
+        -- Cache-Buster included to ensure latest GitHub version
+        local FreshURL = "https://raw.githubusercontent.com/giga21word-maker/bypass-chat/main/main.lua?t=" .. tick()
+        loadstring(game:HttpGet(FreshURL))()
     end)
 end)
 
@@ -96,7 +98,7 @@ local function ManageFling(state)
     end
 end
 
--- // 5. ADVANCED GUI (FIXED MINIMIZE/TOGGLE) //
+-- // 5. ADVANCED GUI (UPGRADED VISUALS) //
 local function BuildUI()
     if CoreGui:FindFirstChild("ChronosUltra") then CoreGui.ChronosUltra:Destroy() end
     
@@ -113,7 +115,9 @@ local function BuildUI()
     Main.ClipsDescendants = true
     Main.ZIndex = 5
     Instance.new("UICorner", Main)
-    Instance.new("UIStroke", Main).Color = CHRONOS_SETTINGS.ACCENT_COLOR
+    local UIStroke = Instance.new("UIStroke", Main)
+    UIStroke.Color = CHRONOS_SETTINGS.ACCENT_COLOR
+    UIStroke.Thickness = 2
 
     local Header = Instance.new("Frame", Main)
     Header.Size = UDim2.new(1, 0, 0, 35)
@@ -124,7 +128,7 @@ local function BuildUI()
     local Title = Instance.new("TextLabel", Header)
     Title.Size = UDim2.new(1, -70, 1, 0)
     Title.Position = UDim2.new(0, 10, 0, 0)
-    Title.Text = "CHRONOS PREMIUM V3.3"
+    Title.Text = "CHRONOS PREMIUM V3.4"
     Title.TextColor3 = Color3.new(1, 1, 1)
     Title.Font = Enum.Font.Code
     Title.BackgroundTransparency = 1
@@ -186,16 +190,33 @@ local function BuildUI()
         ManageFling(CHRONOS_SETTINGS.FLING_MODE)
     end)
 
-    -- // FIXED MINIMIZE SYSTEM //
+    -- // ADVANCED RAINBOW GLOW EFFECT //
+    task.spawn(function()
+        while task.wait() and CHRONOS_SETTINGS.ACTIVE do
+            if CHRONOS_SETTINGS.EGOR_MODE then
+                UIStroke.Color = Color3.fromHSV(tick() % 5 / 5, 1, 1)
+            else
+                UIStroke.Color = CHRONOS_SETTINGS.ACCENT_COLOR
+            end
+        end
+    end)
+
+    -- // FIXED MINIMIZE SYSTEM (SMOOTH TRANSITION) //
     MinBtn.MouseButton1Down:Connect(function()
         CHRONOS_SETTINGS.MINIMIZED = not CHRONOS_SETTINGS.MINIMIZED
         local TargetSize = CHRONOS_SETTINGS.MINIMIZED and UDim2.new(0, 220, 0, 35) or UDim2.new(0, 220, 0, 160)
         
-        -- Hide content immediately if minimizing to prevent clicking invisible buttons
-        if CHRONOS_SETTINGS.MINIMIZED then Content.Visible = false end
+        if CHRONOS_SETTINGS.MINIMIZED then
+            -- Immediate hide for snappy feel
+            Content.Visible = false
+        end
         
-        Main:TweenSize(TargetSize, "Out", "Quart", 0.3, true, function()
-            if not CHRONOS_SETTINGS.MINIMIZED then Content.Visible = true end
+        local Tween = TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = TargetSize})
+        Tween:Play()
+        Tween.Completed:Connect(function()
+            if not CHRONOS_SETTINGS.MINIMIZED then
+                Content.Visible = true
+            end
         end)
     end)
 
