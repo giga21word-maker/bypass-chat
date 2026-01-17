@@ -1,6 +1,6 @@
--- // GHOST-SYNC: MOBILE APEX V23.5 //
--- FEATURE: Chunk-TP (5 Holes at a time)
--- SAFETY: Void-Floor + Velocity Reset
+-- // GHOST-SYNC: MOBILE APEX V23.6 //
+-- BYPASS: Raycast-Height Validation + Velocity Spoof
+-- SAFETY: Void-Check + 5-Chunk Segmenting
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -15,10 +15,10 @@ local AETHER_CONFIG = {
     ENABLED = false,
     PHANTOM = false,
     SPEED = 85,
-    VERSION = "V23.5.0 - Quantum Step",
+    VERSION = "V23.6.0 - Sentinel Shield",
     HOLE_X_OFFSET = 282,
     HOLE_INTERVAL = 84,
-    SAFE_Y = -3,
+    SAFE_Y = -3, -- Default target, but now validated
     ACTIVE = true
 }
 
@@ -30,26 +30,28 @@ local Internal = {
     DragOffset = Vector2.new(0, 0)
 }
 
--- // 2. SAFETY: VOID FLOOR //
-local function CreateSafetyFloor(pos)
-    local Floor = Instance.new("Part")
-    Floor.Size = Vector3.new(20, 1, 20)
-    Floor.Position = pos + Vector3.new(0, -1, 0)
-    Floor.Anchored = true
-    Floor.Transparency = 1
-    Floor.Parent = Workspace
-    game:GetService("Debris"):AddItem(Floor, 2.1) -- Auto-deletes after the 2s wait
+-- // 2. SENTINEL HEIGHT VALIDATION //
+local function GetSafePosition(pos)
+    -- Raycast down to find the floor
+    local rayParam = RaycastParams.new()
+    rayParam.FilterDescendantsInstances = {LocalPlayer.Character, Internal.Ghost}
+    rayParam.FilterType = Enum.RaycastFilterType.Exclude
+    
+    local ray = Workspace:Raycast(pos + Vector3.new(0, 50, 0), Vector3.new(0, -100, 0), rayParam)
+    
+    local targetX = (math.round((pos.X - AETHER_CONFIG.HOLE_X_OFFSET) / AETHER_CONFIG.HOLE_INTERVAL) * AETHER_CONFIG.HOLE_INTERVAL) + AETHER_CONFIG.HOLE_X_OFFSET
+    
+    if ray then
+        -- Floor found! Stay exactly at the floor level or slightly below (-3)
+        return Vector3.new(targetX, ray.Position.Y - 2.5, pos.Z)
+    else
+        -- NO FLOOR! Stay at safe Y-3 but don't drop further
+        return Vector3.new(targetX, AETHER_CONFIG.SAFE_Y, pos.Z)
+    end
 end
 
--- // 3. GRID MATH //
-local function GetNearestSafeHole(pos)
-    local relativeX = pos.X - AETHER_CONFIG.HOLE_X_OFFSET
-    local snapX = math.round(relativeX / AETHER_CONFIG.HOLE_INTERVAL) * AETHER_CONFIG.HOLE_INTERVAL
-    return Vector3.new(snapX + AETHER_CONFIG.HOLE_X_OFFSET, AETHER_CONFIG.SAFE_Y, pos.Z)
-end
-
--- // 4. CHUNK-TP BYPASS (5 Holes -> Wait 2s) //
-local function QuantumTeleport(targetCF)
+-- // 3. CHUNK-TP (5-HOLE STEP) //
+local function SentinelTeleport(targetCF)
     local Root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not Root or Internal.IsWarpping then return end
     
@@ -64,50 +66,48 @@ local function QuantumTeleport(targetCF)
         for i = 1, totalHoles do
             if not AETHER_CONFIG.ACTIVE then break end
             
-            -- CHUNK LOGIC: Only wait 2 seconds every 5 holes
+            -- Wait 2s every 5 holes to clear speed history
             if i % 5 == 0 then
-                print("[APEX] CHUNK REACHED. STABILIZING FOR 2S...")
-                CreateSafetyFloor(Root.Position)
-                Root.AssemblyLinearVelocity = Vector3.zero -- RESET AC TRACKING
+                Root.AssemblyLinearVelocity = Vector3.new(0, -1, 0) -- Spoof falling
                 task.wait(2)
             end
             
             local nextX = startPos.X + (direction * (i * AETHER_CONFIG.HOLE_INTERVAL))
-            local targetHole = Vector3.new(nextX, AETHER_CONFIG.SAFE_Y, endPos.Z)
+            local safeTarget = GetSafePosition(Vector3.new(nextX, AETHER_CONFIG.SAFE_Y, endPos.Z))
             
-            Root.CFrame = CFrame.new(targetHole)
+            -- Add tiny Jitter to bypass "Pixel-Perfect" detection
+            local jitter = Vector3.new(math.random(-10,10)/100, 0, math.random(-10,10)/100)
+            Root.CFrame = CFrame.new(safeTarget + jitter)
+            
             RunService.Heartbeat:Wait()
         end
     end
     
-    -- Final Arrival
-    task.wait(1)
     Root.CFrame = targetCF
-    Root.Anchored = false
-    print("[APEX] ARRIVED SAFELY.")
+    task.wait(0.5)
     Internal.IsWarpping = false
 end
 
--- // 5. PHANTOM CORE //
+-- // 4. PHANTOM STOP //
 local function StopPhantom()
     if Internal.Ghost then
         local GhostRoot = Internal.Ghost:FindFirstChild("HumanoidRootPart")
         if GhostRoot then
             local targetPos = GhostRoot.Position
-            local safeHoleCF = CFrame.new(GetNearestSafeHole(targetPos))
+            local finalCF = CFrame.new(GetSafePosition(targetPos))
             
             Internal.Ghost:Destroy()
             Internal.Ghost = nil
             Camera.CameraSubject = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
             
             task.spawn(function()
-                QuantumTeleport(safeHoleCF)
+                SentinelTeleport(finalCF)
             end)
         end
     end
 end
 
--- // 6. RUNTIME //
+-- // 5. RUNTIME //
 local function ExecuteLogic(dt)
     if not AETHER_CONFIG.ACTIVE then return end
     local Char = LocalPlayer.Character
@@ -126,10 +126,9 @@ local function ExecuteLogic(dt)
                 GhostRoot.CFrame = rot + (MoveDir * AETHER_CONFIG.SPEED * dt)
             end
         end
-        -- Anti-Death: Lock real body in hole
-        Root.CFrame = CFrame.new(GetNearestSafeHole(Root.Position))
+        -- Safe-Lock real body
+        Root.CFrame = CFrame.new(GetSafePosition(Root.Position))
         Root.Anchored = true
-        Root.AssemblyLinearVelocity = Vector3.zero
     elseif AETHER_CONFIG.ENABLED then
         Root.Anchored = false
         if Hum.MoveDirection.Magnitude > 0 then
@@ -140,26 +139,33 @@ local function ExecuteLogic(dt)
     end
 end
 
--- // 7. UI //
+-- // 6. UI CONSTRUCTION //
 local function BuildUI()
     if CoreGui:FindFirstChild("AetherApex") then CoreGui.AetherApex:Destroy() end
     local Screen = Instance.new("ScreenGui", CoreGui)
     Screen.Name = "AetherApex"
     
     local Main = Instance.new("Frame", Screen)
-    Main.Size = UDim2.new(0, 250, 0, 150)
-    Main.Position = UDim2.new(0.5, -125, 0.4, 0)
-    Main.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+    Main.Size = UDim2.new(0, 260, 0, 160)
+    Main.Position = UDim2.new(0.5, -130, 0.4, 0)
+    Main.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
     Instance.new("UICorner", Main)
     Instance.new("UIStroke", Main).Color = Color3.fromRGB(0, 255, 180)
 
+    local Title = Instance.new("TextLabel", Main)
+    Title.Size = UDim2.new(1, 0, 0, 40)
+    Title.Text = "SENTINEL APEX V23.6"
+    Title.TextColor3 = Color3.new(1,1,1)
+    Title.Font = Enum.Font.GothamBold
+    Title.BackgroundTransparency = 1
+
     local B = Instance.new("TextButton", Main)
-    B.Size = UDim2.new(0, 200, 0, 50)
-    B.Position = UDim2.new(0.1, 0, 0.3, 0)
+    B.Size = UDim2.new(0, 220, 0, 50)
+    B.Position = UDim2.new(0, 20, 0, 60)
     B.Text = "TOGGLE PHANTOM"
     B.Font = Enum.Font.GothamBold
     B.TextColor3 = Color3.new(1,1,1)
-    B.BackgroundColor3 = Color3.fromRGB(30,30,30)
+    B.BackgroundColor3 = Color3.fromRGB(25,25,25)
     Instance.new("UICorner", B)
 
     B.MouseButton1Down:Connect(function()
@@ -172,11 +178,11 @@ local function BuildUI()
             for _, v in pairs(Internal.Ghost:GetDescendants()) do
                 if v:IsA("BasePart") then v.Transparency = 0.5 v.CanCollide = false v.Anchored = true end
             end
-            B.Text = "PHANTOM ACTIVE"
+            B.Text = "ACTIVE (GHOST OUT)"
         else
-            B.Text = "RETURNING (5-STEP)..."
+            B.Text = "5-CHUNK RETURN..."
             StopPhantom()
-            task.wait(3)
+            task.wait(1)
             B.Text = "TOGGLE PHANTOM"
         end
     end)
