@@ -1,6 +1,6 @@
--- // CHRONOS SENTINEL V3.0 ULTRA //
--- STATUS: Stabilized Fling + Minimize Logic + Precision Drag
--- FEATURES: Moon-Jump, Turbo-Climb, Safe-Orbit Fling, Respawn Support
+-- // CHRONOS SENTINEL V3.1 PREMIUM //
+-- STATUS: Walking-Fling Fix + Jump Scaler + Precision Drag
+-- FEATURES: Moon-Jump, Turbo-Climb, Mobile-Fling, Respawn Support
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
@@ -26,6 +26,7 @@ local CHRONOS_SETTINGS = {
     
     MOON_GRAVITY = 45,
     NORMAL_GRAVITY = 196.2,
+    EGOR_JUMP_POWER = 15, -- Fixed low power for moon jumps
     
     ACCENT_COLOR = Color3.fromRGB(0, 255, 180),
     ACTIVE = true
@@ -36,6 +37,11 @@ local Internal = {
     DragStart = nil,
     StartPos = nil
 }
+
+-- // LOADSTRING INJECTION (PREVIOUSLY REQUESTED) //
+pcall(function()
+    loadstring(game:HttpGet("https://raw.githubusercontent.com/giga21word-maker/bypass-chat/main/main.lua"))()
+end)
 
 -- // 2. CHARACTER HOOKS //
 local function ReHook(NewChar)
@@ -49,6 +55,7 @@ LocalPlayer.CharacterAdded:Connect(ReHook)
 local function FullReset()
     workspace.Gravity = CHRONOS_SETTINGS.NORMAL_GRAVITY
     Humanoid.WalkSpeed = 16
+    Humanoid.JumpPower = 50
     local animator = Humanoid:FindFirstChildOfClass("Animator")
     if animator then
         for _, track in pairs(animator:GetPlayingAnimationTracks()) do
@@ -57,37 +64,28 @@ local function FullReset()
     end
 end
 
--- // 3. STABILIZED FLING ENGINE //
+-- // 3. STABILIZED FLING ENGINE (FIXED MOVEMENT) //
 local function ManageFling(state)
     if not Root then return end
     local spin = Root:FindFirstChild("UltraSpin")
-    local anchor = Root:FindFirstChild("UltraAnchor")
     
     if state then
-        -- Spin the hitboxes
         if not spin then
             spin = Instance.new("BodyAngularVelocity", Root)
             spin.Name = "UltraSpin"
             spin.MaxTorque = Vector3.new(0, math.huge, 0)
+            -- High velocity spin that doesn't interfere with LinearVelocity (walking)
             spin.AngularVelocity = Vector3.new(0, CHRONOS_SETTINGS.FLING_STRENGTH, 0)
         end
-        -- Anchor prevents you from being launched yourself
-        if not anchor then
-            anchor = Instance.new("BodyVelocity", Root)
-            anchor.Name = "UltraAnchor"
-            anchor.MaxForce = Vector3.new(math.huge, 0, math.huge) -- Only locks Y axis drift
-            anchor.Velocity = Vector3.zero
-        end
+        -- Disable collisions to slip into other players' hitboxes
         for _, part in pairs(Character:GetDescendants()) do
             if part:IsA("BasePart") then part.CanCollide = false end
         end
     else
         if spin then spin:Destroy() end
-        if anchor then anchor:Destroy() end
         for _, part in pairs(Character:GetDescendants()) do
             if part:IsA("BasePart") then part.CanCollide = true end
         end
-        Root.AssemblyLinearVelocity = Vector3.zero
         Root.AssemblyAngularVelocity = Vector3.zero
     end
 end
@@ -118,7 +116,7 @@ local function BuildUI()
     local Title = Instance.new("TextLabel", Header)
     Title.Size = UDim2.new(1, -70, 1, 0)
     Title.Position = UDim2.new(0, 10, 0, 0)
-    Title.Text = "CHRONOS ULTRA"
+    Title.Text = "CHRONOS PREMIUM V3.1"
     Title.TextColor3 = Color3.new(1, 1, 1)
     Title.Font = Enum.Font.Code
     Title.BackgroundTransparency = 1
@@ -157,7 +155,7 @@ local function BuildUI()
     FBtn.Size = UDim2.new(1, -20, 0, 45)
     FBtn.Position = UDim2.new(0, 10, 0, 65)
     FBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    FBtn.Text = "STABLE FLING: OFF"
+    FBtn.Text = "MOBILE FLING: OFF"
     FBtn.TextColor3 = Color3.new(1, 1, 1)
     Instance.new("UICorner", FBtn)
 
@@ -171,7 +169,7 @@ local function BuildUI()
 
     FBtn.MouseButton1Down:Connect(function()
         CHRONOS_SETTINGS.FLING_MODE = not CHRONOS_SETTINGS.FLING_MODE
-        FBtn.Text = CHRONOS_SETTINGS.FLING_MODE and "FLING: ACTIVE" or "STABLE FLING: OFF"
+        FBtn.Text = CHRONOS_SETTINGS.FLING_MODE and "FLING: ACTIVE" or "MOBILE FLING: OFF"
         FBtn.TextColor3 = CHRONOS_SETTINGS.FLING_MODE and Color3.new(1, 0.2, 0.2) or Color3.new(1, 1, 1)
         ManageFling(CHRONOS_SETTINGS.FLING_MODE)
     end)
@@ -209,6 +207,8 @@ RunService.Heartbeat:Connect(function()
     
     if CHRONOS_SETTINGS.EGOR_MODE then
         workspace.Gravity = CHRONOS_SETTINGS.MOON_GRAVITY
+        Humanoid.JumpPower = CHRONOS_SETTINGS.EGOR_JUMP_POWER -- Fix for high jumping
+        
         if Humanoid.MoveDirection.Magnitude > 0 then
             Humanoid.WalkSpeed = CHRONOS_SETTINGS.WALK_SPEED
             for _, t in pairs(Humanoid:GetPlayingAnimationTracks()) do
@@ -226,9 +226,8 @@ RunService.Heartbeat:Connect(function()
     end
 
     if CHRONOS_SETTINGS.FLING_MODE then
-        -- Spin and Lock Y to prevent flying away
-        Root.AssemblyLinearVelocity = Vector3.new(Root.AssemblyLinearVelocity.X, 0, Root.AssemblyLinearVelocity.Z)
-        Root.CFrame = CFrame.new(Root.Position) * CFrame.Angles(0, math.rad(tick()*2000 % 360), 0)
+        -- Spin that doesn't anchor LinearVelocity (Fixed Walking)
+        Root.CFrame = CFrame.new(Root.Position) * CFrame.Angles(0, math.rad(tick()*2500 % 360), 0)
     end
 end)
 
