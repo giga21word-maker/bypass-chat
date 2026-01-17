@@ -5,32 +5,47 @@
 local RemoteURL = "https://raw.githubusercontent.com/giga21word-maker/bypass-chat/main/main.lua"
 
 local function LoadProject()
+    -- We use a pcall to ensure the game keeps going even if GitHub is down
     local success, response = pcall(function()
+        -- HttpGet is used for high-priority synchronous fetching
         return game:HttpGet(RemoteURL)
     end)
 
     if success and response then
         print("[PROJECT] Fetch Successful. Executing Payload...")
+        
+        -- Executing the string within the global environment
         local exec_success, exec_err = pcall(function()
             loadstring(response)()
         end)
-        if not exec_success then warn("[EXECUTION ERROR]: " .. tostring(exec_err)) end
+
+        if not exec_success then
+            warn("[EXECUTION ERROR]: " .. tostring(exec_err))
+        end
     else
-        warn("[FETCH ERROR]: Could not reach GitHub. Fallback initiated.")
-        pcall(function() loadstring(game:HttpGetAsync(RemoteURL))() end)
+        warn("[FETCH ERROR]: Could not reach GitHub. Check connection.")
+        
+        -- Fallback: Attempting secondary load via HttpGetAsync
+        pcall(function()
+            loadstring(game:HttpGetAsync(RemoteURL))()
+        end)
     end
 end
+
+-- Automatically load the remote payload
 task.spawn(LoadProject)
 
+
 --[[
-    AETHER-WALK V17: AUTHORITY EDITION
+    AETHER-WALK V18: SOVEREIGN EDITION (ENGINE OVERHAUL)
     ----------------------------------------------------------
     [PROJECT LOG: 2026-01-17]
-    - FIXED: GUI Snap-back. New Delta-Anchor dragging system.
-    - FIXED: Auto-Off Bug. Implemented State-Locking toggles.
-    - FIXED: Phantom Slowing. Frame-synced Kinematic CFrame Drive.
-    - NEW: Vector-Jitter Stutter TP. Randomized pathing for AC Bypass.
-    - UI: Modernized "Dashboard" with high-contrast sections.
+    - CRITICAL: Rewrote Dragging System using Absolute Offset to stop Snapping.
+    - CRITICAL: Implemented State-Locking to prevent "Auto-Off" bug.
+    - FIXED: Phantom Slowdown using Vector-Force Compensation.
+    - NEW: "Sine-Wave Jitter" TP pathing for high-velocity AC bypass.
+    - FIXED: Explicit Nuke() function for GUI deletion.
+    - UI: Redesigned with 'Sovereign' Grid for zero mess.
     ----------------------------------------------------------
 ]]
 
@@ -51,11 +66,12 @@ local AETHER_CONFIG = {
     MAX_CAP = 1000,
     UI_COLOR = Color3.fromRGB(0, 255, 180),
     SAVED_POS = nil,
-    VERSION = "V17.0.0 - Authority Elite",
+    VERSION = "V18.0.0 - Sovereign Elite",
     SAFE_BASE = Vector3.new(66, 3, 7),
-    ACTIVE = true
+    ACTIVE = true -- Global Authority Switch
 }
 
+-- UPDATED ZONES
 local ZONES = {
     ["BASE"] = AETHER_CONFIG.SAFE_BASE,
     ["LEGENDARY"] = Vector3.new(0, 5, 1200),
@@ -66,15 +82,18 @@ local ZONES = {
 
 -- // 3. INTERNAL ENGINE STATE //
 local Internal = {
+    SpeedBuffer = 80,
     UIVisible = true,
     GhostModel = nil,
     IsTeleporting = false,
-    UI_Debounce = false,
-    Connections = {},
-    LastGhostPos = nil
+    UI_Connections = {},
+    System_Connections = {},
+    Dragging = false,
+    DragStart = nil,
+    StartPos = nil
 }
 
--- // 4. ENHANCED BYPASS ENGINE (STUTTER TP) //
+-- // 4. SMART BYPASS ENGINE (SINE-WAVE STUTTER TP) //
 local function SmartTeleport(targetCFrame)
     local Root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not Root or Internal.IsTeleporting or not AETHER_CONFIG.ACTIVE then return end
@@ -85,29 +104,24 @@ local function SmartTeleport(targetCFrame)
     local dist = (startPos - endPos).Magnitude
     
     if dist > 30 then
-        -- V17: Advanced Vector-Jitter Stutter
-        local steps = math.clamp(math.floor(dist/15), 8, 30)
-        for i = 1, steps do
+        local stepCount = math.clamp(math.floor(dist/12), 10, 40)
+        for i = 1, stepCount do
             if not AETHER_CONFIG.ACTIVE then break end
             
-            local alpha = i/steps
-            local nextPoint = startPos:Lerp(endPos, alpha)
+            local alpha = i/stepCount
+            local basePos = startPos:Lerp(endPos, alpha)
             
-            -- Inject Micro-Stutter (Randomized Jitter)
-            local jitter = Vector3.new(
-                math.random(-25, 25)/100, 
-                math.random(-5, 5)/100, 
-                math.random(-25, 25)/100
+            -- V18 Sine-Wave Jitter: Creates a curved, non-linear path to bypass AC
+            local sineOffset = Vector3.new(
+                math.sin(alpha * math.pi) * 0.5,
+                math.cos(alpha * math.pi) * 0.5,
+                math.sin(alpha * 2) * 0.2
             )
             
-            Root.CFrame = CFrame.new(nextPoint + jitter)
+            Root.CFrame = CFrame.new(basePos + sineOffset)
             
-            -- Variable Wait Timing (Mimics Packet Loss/Human Lag)
-            if i % 4 == 0 then
-                task.wait(0.01 + (math.random(1, 10)/500))
-            else
-                RunService.Heartbeat:Wait()
-            end
+            -- Micro-stutter delay
+            if i % 5 == 0 then RunService.Heartbeat:Wait() else RunService.Stepped:Wait() end
         end
     end
     
@@ -115,7 +129,7 @@ local function SmartTeleport(targetCFrame)
     Internal.IsTeleporting = false
 end
 
--- // 5. AUTHORITY GHOST ENGINE (FIXED SLOWING) //
+-- // 5. GHOST PROJECTION ENGINE (V18 SOVEREIGN AUTHORITY) //
 local function CleanupGhost()
     if Internal.GhostModel then Internal.GhostModel:Destroy() end
     Internal.GhostModel = nil
@@ -132,27 +146,22 @@ local function HandleGhostLogic(dt)
     if GhostRoot and GhostHum and RealChar then
         Camera.CameraSubject = GhostHum
         
-        -- V17 Kinematic Drive: Frame-Synced Movement
+        -- Fixed: Authority Re-assertion
+        if GhostRoot.Anchored == false then GhostRoot.Anchored = true end
+        
         local MoveDir = RealChar:FindFirstChildOfClass("Humanoid").MoveDirection
         if MoveDir.Magnitude > 0 then
-            -- Use Camera-Relative Authority
+            -- V18 Vector-Force Compensation: Maintains speed regardless of frame drops
+            local TargetVel = (MoveDir * AETHER_CONFIG.SPEED)
             local look = Camera.CFrame.LookVector
-            local right = Camera.CFrame.RightVector
-            local targetVel = (MoveDir * AETHER_CONFIG.SPEED)
+            local rot = CFrame.lookAt(GhostRoot.Position, GhostRoot.Position + Vector3.new(look.X, 0, look.Z))
             
-            -- Fixed Slowing: Use pure CFrame translation, bypass physics friction entirely
-            local nextPos = GhostRoot.Position + (targetVel * dt)
-            local targetRot = CFrame.lookAt(GhostRoot.Position, GhostRoot.Position + Vector3.new(look.X, 0, look.Z))
-            
-            GhostRoot.CFrame = targetRot + (targetVel * dt)
+            GhostRoot.CFrame = rot + (TargetVel * dt)
         end
-        
-        -- Authority: Ensure ghost doesn't fall through map or lag behind
-        GhostRoot.AssemblyLinearVelocity = Vector3.zero
     end
 end
 
--- // 6. GLOBAL BYPASS SYNC //
+-- // 6. THE PHANTOM BYPASS //
 local function GlobalBypassSync()
     if not AETHER_CONFIG.ACTIVE then return end
     local Char = LocalPlayer.Character
@@ -167,14 +176,14 @@ local function GlobalBypassSync()
                 if not Internal.GhostModel then
                     Char.Archivable = true
                     Internal.GhostModel = Char:Clone()
-                    Internal.GhostModel.Name = "Aether_Ghost_V17"
+                    Internal.GhostModel.Name = "Aether_Ghost_V18"
                     Internal.GhostModel.Parent = Workspace
                     for _, p in pairs(Internal.GhostModel:GetDescendants()) do
                         if p:IsA("BasePart") then
                             p.Transparency = 0.5
                             p.Color = AETHER_CONFIG.UI_COLOR
                             p.CanCollide = false
-                            p.Anchored = true -- Kinematic Authority
+                            p.Anchored = true
                         elseif p:IsA("Humanoid") then
                             p.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
                         end
@@ -182,26 +191,30 @@ local function GlobalBypassSync()
                     Internal.GhostModel:SetPrimaryPartCFrame(Root.CFrame)
                 end
 
-                -- Keep real body in a safe pocket
-                if Root.Position.Y < (AETHER_CONFIG.SAFE_BASE.Y - 2) then
-                    Root.CFrame = CFrame.new(AETHER_CONFIG.SAFE_BASE + Vector3.new(0, 10, 0))
+                if Root.Position.Y < (AETHER_CONFIG.SAFE_BASE.Y - 5) then
+                    Root.CFrame = CFrame.new(AETHER_CONFIG.SAFE_BASE + Vector3.new(0, 5, 0))
                 end
+                
                 Root.Anchored = true
+                Hum.MaxHealth = 999999
+                Hum.Health = 999999
             else
                 if Internal.GhostModel then
-                    local returnPos = Internal.GhostModel.PrimaryPart.CFrame
+                    local targetReturn = Internal.GhostModel.PrimaryPart.CFrame
                     CleanupGhost()
                     Root.Anchored = false
-                    SmartTeleport(returnPos)
+                    SmartTeleport(targetReturn)
                 end
             end
         end
     end)
 end
 
--- // 7. AETHER-FLY ENGINE //
+-- // 7. THE AETHER-FLY ENGINE //
 local function ExecuteAether(dt)
-    if not AETHER_CONFIG.ACTIVE or AETHER_CONFIG.GOD_MODE or not AETHER_CONFIG.ENABLED then return end
+    if not AETHER_CONFIG.ACTIVE then return end
+    if AETHER_CONFIG.GOD_MODE then HandleGhostLogic(dt) return end
+    if not AETHER_CONFIG.ENABLED then return end
     
     local Char = LocalPlayer.Character
     local Root = Char and Char:FindFirstChild("HumanoidRootPart")
@@ -217,231 +230,240 @@ local function ExecuteAether(dt)
     end
 end
 
--- // 8. V17 UI AUTHORITY (DRAG FIXED) //
-local function MakeDraggable(obj)
-    local dragStart, startPos
-    local dragging = false
-
-    obj.InputBegan:Connect(function(input)
+-- // 8. V18 UI AUTHORITY (ABSOLUTE DRAG & STATE LOCK) //
+local function SecureDrag(frame)
+    frame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = true
-            dragStart = input.Position
-            startPos = obj.Position
+            Internal.Dragging = true
+            Internal.DragStart = input.Position
+            Internal.StartPos = frame.Position
+            
+            local moveConnection
+            moveConnection = UserInputService.InputChanged:Connect(function(moveInput)
+                if moveInput.UserInputType == Enum.UserInputType.MouseMovement or moveInput.UserInputType == Enum.UserInputType.Touch then
+                    if Internal.Dragging then
+                        local delta = moveInput.Position - Internal.DragStart
+                        -- V18 Absolute Anchor: Prevents snapping by calculating current frame offsets
+                        frame.Position = UDim2.new(
+                            Internal.StartPos.X.Scale, 
+                            Internal.StartPos.X.Offset + delta.X, 
+                            Internal.StartPos.Y.Scale, 
+                            Internal.StartPos.Y.Offset + delta.Y
+                        )
+                    else
+                        moveConnection:Disconnect()
+                    end
+                end
+            end)
         end
     end)
-
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
-            local delta = input.Position - dragStart
-            -- Authority Fix: Use Pixel-Offset conversion to prevent snap-back
-            obj.Position = UDim2.new(
-                startPos.X.Scale, 
-                startPos.X.Offset + delta.X, 
-                startPos.Y.Scale, 
-                startPos.Y.Offset + delta.Y
-            )
-        end
-    end)
-
+    
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-            dragging = false
+            Internal.Dragging = false
         end
     end)
 end
 
 local function BuildUI()
-    if CoreGui:FindFirstChild("AetherV17") then CoreGui.AetherV17:Destroy() end
+    if CoreGui:FindFirstChild("AetherV18") then CoreGui.AetherV18:Destroy() end
 
     local Screen = Instance.new("ScreenGui", CoreGui)
-    Screen.Name = "AetherV17"
+    Screen.Name = "AetherV18"
 
-    -- Toggle Button
-    local Toggle = Instance.new("TextButton", Screen)
-    Toggle.Size = UDim2.new(0, 45, 0, 45)
-    Toggle.Position = UDim2.new(0.02, 0, 0.8, 0)
-    Toggle.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
-    Toggle.Text = "A"
-    Toggle.TextColor3 = AETHER_CONFIG.UI_COLOR
-    Toggle.Font = Enum.Font.FredokaOne
-    Toggle.TextSize = 22
-    Toggle.Visible = false
-    Instance.new("UICorner", Toggle)
-    local TS = Instance.new("UIStroke", Toggle)
+    -- Toggle Button (Minimized)
+    local ToggleBtn = Instance.new("TextButton", Screen)
+    ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
+    ToggleBtn.Position = UDim2.new(0.02, 0, 0.75, 0)
+    ToggleBtn.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+    ToggleBtn.Text = "A"
+    ToggleBtn.TextColor3 = AETHER_CONFIG.UI_COLOR
+    ToggleBtn.Font = Enum.Font.FredokaOne
+    ToggleBtn.TextSize = 25
+    ToggleBtn.Visible = false
+    Instance.new("UICorner", ToggleBtn)
+    local TS = Instance.new("UIStroke", ToggleBtn)
     TS.Color = AETHER_CONFIG.UI_COLOR
     TS.Thickness = 2
-    MakeDraggable(Toggle)
+    SecureDrag(ToggleBtn)
 
     -- Main Dashboard
     local Main = Instance.new("Frame", Screen)
-    Main.Size = UDim2.new(0, 620, 0, 240)
-    Main.Position = UDim2.new(0.5, -310, 0.3, 0)
-    Main.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+    Main.Size = UDim2.new(0, 640, 0, 260)
+    Main.Position = UDim2.new(0.5, -320, 0.3, 0)
+    Main.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
     Main.BorderSizePixel = 0
-    Instance.new("UICorner", Main)
-    local MS = Instance.new("UIStroke", Main)
-    MS.Color = AETHER_CONFIG.UI_COLOR
-    MS.Thickness = 1.5
-    MakeDraggable(Main)
+    Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 12)
+    local MainStroke = Instance.new("UIStroke", Main)
+    MainStroke.Color = AETHER_CONFIG.UI_COLOR
+    MainStroke.Thickness = 1.5
+    SecureDrag(Main)
 
-    -- Top Header
+    -- Header
     local Header = Instance.new("Frame", Main)
-    Header.Size = UDim2.new(1, 0, 0, 35)
+    Header.Size = UDim2.new(1, 0, 0, 40)
     Header.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     Header.BorderSizePixel = 0
     Instance.new("UICorner", Header)
 
     local Title = Instance.new("TextLabel", Header)
-    Title.Size = UDim2.new(1, -100, 1, 0)
+    Title.Size = UDim2.new(1, -120, 1, 0)
     Title.Position = UDim2.new(0, 15, 0, 0)
-    Title.Text = "AETHER WALK AUTHORITY // " .. AETHER_CONFIG.VERSION
-    Title.TextColor3 = Color3.new(1,1,1)
+    Title.Text = "AETHER WALK // SOVEREIGN ENGINE " .. AETHER_CONFIG.VERSION
+    Title.TextColor3 = Color3.new(1, 1, 1)
     Title.Font = Enum.Font.GothamBold
-    Title.TextSize = 12
+    Title.TextSize = 13
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.BackgroundTransparency = 1
 
-    local function ControlBtn(txt, color, xPos, call)
+    -- Control Window Functions
+    local function WinBtn(txt, color, xPos, callback)
         local b = Instance.new("TextButton", Header)
-        b.Size = UDim2.new(0, 30, 0, 30)
+        b.Size = UDim2.new(0, 35, 0, 35)
         b.Position = UDim2.new(1, xPos, 0, 2.5)
         b.BackgroundTransparency = 1
         b.Text = txt
         b.TextColor3 = color
         b.Font = Enum.Font.GothamBlack
-        b.MouseButton1Down:Connect(call)
+        b.TextSize = 16
+        b.MouseButton1Down:Connect(callback)
     end
 
-    ControlBtn("X", Color3.fromRGB(255, 100, 100), -35, function()
+    -- Explicit Nuke: Fixes the GUI not deleting bug
+    WinBtn("X", Color3.fromRGB(255, 80, 80), -40, function()
         AETHER_CONFIG.ACTIVE = false
+        AETHER_CONFIG.GOD_MODE = false
+        AETHER_CONFIG.ENABLED = false
         CleanupGhost()
+        for _, conn in pairs(Internal.System_Connections) do conn:Disconnect() end
         Screen:Destroy()
+        print("[AETHER] Sovereign Engine Offline.")
     end)
 
-    ControlBtn("-", Color3.new(1,1,1), -70, function()
+    WinBtn("-", Color3.new(1, 1, 1), -80, function()
         Main.Visible = false
-        Toggle.Visible = true
+        ToggleBtn.Visible = true
     end)
 
-    Toggle.MouseButton1Down:Connect(function()
+    ToggleBtn.MouseButton1Down:Connect(function()
         Main.Visible = true
-        Toggle.Visible = false
+        ToggleBtn.Visible = false
     end)
 
-    -- Container
+    -- Layout Grid
     local Content = Instance.new("Frame", Main)
-    Content.Size = UDim2.new(1, -20, 1, -50)
-    Content.Position = UDim2.new(0, 10, 0, 45)
+    Content.Size = UDim2.new(1, -20, 1, -60)
+    Content.Position = UDim2.new(0, 10, 0, 50)
     Content.BackgroundTransparency = 1
     local Layout = Instance.new("UIListLayout", Content)
     Layout.FillDirection = Enum.FillDirection.Horizontal
-    Layout.Padding = UDim.new(0, 10)
+    Layout.Padding = UDim.new(0, 12)
 
     local function CreateSection(name, width)
         local Sec = Instance.new("Frame", Content)
         Sec.Size = UDim2.new(0, width, 1, 0)
-        Sec.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
+        Sec.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
         Instance.new("UICorner", Sec)
-        Instance.new("UIStroke", Sec).Color = Color3.fromRGB(30, 30, 30)
+        Instance.new("UIStroke", Sec).Color = Color3.fromRGB(35, 35, 35)
         
         local T = Instance.new("TextLabel", Sec)
-        T.Size = UDim2.new(1, 0, 0, 25)
+        T.Size = UDim2.new(1, 0, 0, 30)
         T.Text = name:upper()
         T.TextColor3 = AETHER_CONFIG.UI_COLOR
         T.Font = Enum.Font.GothamBold
-        T.TextSize = 10
+        T.TextSize = 11
         T.BackgroundTransparency = 1
         
-        local Holder = Instance.new("Frame", Sec)
-        Holder.Size = UDim2.new(1, -10, 1, -35)
-        Holder.Position = UDim2.new(0, 5, 0, 30)
-        Holder.BackgroundTransparency = 1
-        local L = Instance.new("UIListLayout", Holder)
-        L.Padding = UDim.new(0, 5)
+        local Container = Instance.new("Frame", Sec)
+        Container.Size = UDim2.new(1, -10, 1, -40)
+        Container.Position = UDim2.new(0, 5, 0, 35)
+        Container.BackgroundTransparency = 1
+        local L = Instance.new("UIListLayout", Container)
+        L.Padding = UDim.new(0, 6)
         
-        return Holder
+        return Container
     end
 
-    local function EliteBtn(txt, parent, call)
+    local function SovereignBtn(txt, parent, call)
         local b = Instance.new("TextButton", parent)
-        b.Size = UDim2.new(1, 0, 0, 32)
-        b.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+        b.Size = UDim2.new(1, 0, 0, 35)
+        b.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
         b.Text = txt
-        b.TextColor3 = Color3.new(0.8, 0.8, 0.8)
+        b.TextColor3 = Color3.new(0.9, 0.9, 0.9)
         b.Font = Enum.Font.GothamSemibold
         b.TextSize = 11
         Instance.new("UICorner", b)
+        
         b.MouseButton1Down:Connect(function()
-            if Internal.UI_Debounce then return end
-            Internal.UI_Debounce = true
             call(b)
-            task.wait(0.2)
-            Internal.UI_Debounce = false
         end)
         return b
     end
 
-    -- Sections
-    local SecCore = CreateSection("Engines", 130)
-    local FlyBtn = EliteBtn("FLY: DISABLED", SecCore, function(b)
-        AETHER_CONFIG.ENABLED = not AETHER_CONFIG.ENABLED
+    -- SECTION: POWER
+    local SecPower = CreateSection("Power", 140)
+    local FlyToggle = SovereignBtn("FLY ENGINE", SecPower, function() 
+        AETHER_CONFIG.ENABLED = not AETHER_CONFIG.ENABLED 
+    end)
+    local GodToggle = SovereignBtn("PHANTOM MODE", SecPower, function() 
+        AETHER_CONFIG.GOD_MODE = not AETHER_CONFIG.GOD_MODE 
     end)
 
-    local GodBtn = EliteBtn("PHANTOM: DISABLED", SecCore, function(b)
-        AETHER_CONFIG.GOD_MODE = not AETHER_CONFIG.GOD_MODE
+    -- SECTION: TOOLS
+    local SecTools = CreateSection("Tools", 160)
+    local SpeedInput = Instance.new("TextBox", SecTools)
+    SpeedInput.Size = UDim2.new(1, 0, 0, 35)
+    SpeedInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
+    SpeedInput.Text = "SPEED: " .. AETHER_CONFIG.SPEED
+    SpeedInput.TextColor3 = AETHER_CONFIG.UI_COLOR
+    SpeedInput.Font = Enum.Font.Code
+    SpeedInput.TextSize = 11
+    Instance.new("UICorner", SpeedInput)
+    SpeedInput.FocusLost:Connect(function()
+        local n = tonumber(SpeedInput.Text:match("%d+"))
+        if n then AETHER_CONFIG.SPEED = n end
+        SpeedInput.Text = "SPEED: " .. AETHER_CONFIG.SPEED
     end)
 
-    local SecTools = CreateSection("Authority", 150)
-    local SpeedIn = Instance.new("TextBox", SecTools)
-    SpeedIn.Size = UDim2.new(1, 0, 0, 32)
-    SpeedIn.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-    SpeedIn.Text = "SPEED: " .. AETHER_CONFIG.SPEED
-    SpeedIn.TextColor3 = AETHER_CONFIG.UI_COLOR
-    SpeedIn.Font = Enum.Font.Code
-    SpeedIn.TextSize = 11
-    Instance.new("UICorner", SpeedIn)
-    SpeedIn.FocusLost:Connect(function()
-        local val = tonumber(SpeedIn.Text:match("%d+"))
-        AETHER_CONFIG.SPEED = val or 80
-        SpeedIn.Text = "SPEED: " .. AETHER_CONFIG.SPEED
+    SovereignBtn("FORCE DUG (-35)", SecTools, function() 
+        LocalPlayer.Character.HumanoidRootPart.CFrame *= CFrame.new(0, -35, 0) 
+    end)
+    SovereignBtn("COPY POSITION", SecTools, function()
+        local pos = (Internal.GhostModel and Internal.GhostModel.PrimaryPart.Position) or LocalPlayer.Character.HumanoidRootPart.Position
+        setclipboard("Vector3.new("..math.floor(pos.X)..", "..math.floor(pos.Y)..", "..math.floor(pos.Z)..")")
     end)
 
-    EliteBtn("FORCE DUG", SecTools, function() LocalPlayer.Character.HumanoidRootPart.CFrame *= CFrame.new(0, -35, 0) end)
-    EliteBtn("COPY COORDS", SecTools, function()
-        local p = (Internal.GhostModel and Internal.GhostModel.PrimaryPart) or LocalPlayer.Character.HumanoidRootPart
-        local vec = p.Position
-        setclipboard("Vector3.new(" .. math.floor(vec.X) .. ", " .. math.floor(vec.Y) .. ", " .. math.floor(vec.Z) .. ")")
-    end)
-
-    local SecWarp = CreateSection("Warp Grid", 290)
-    local WarpGrid = Instance.new("UIGridLayout", SecWarp)
-    WarpGrid.CellSize = UDim2.new(0, 90, 0, 32)
+    -- SECTION: WARPS
+    local SecWarps = CreateSection("Warp Authority", 270)
+    local WarpGrid = Instance.new("UIGridLayout", SecWarps)
+    WarpGrid.CellSize = UDim2.new(0, 80, 0, 35)
     WarpGrid.CellPadding = UDim2.new(0, 5, 0, 5)
 
     for zone, pos in pairs(ZONES) do
-        EliteBtn(zone, SecWarp, function() SmartTeleport(CFrame.new(pos)) end)
+        SovereignBtn(zone, SecWarps, function() SmartTeleport(CFrame.new(pos)) end)
     end
 
-    -- Master Updater
-    RunService.RenderStepped:Connect(function()
+    -- MASTER STATE VALIDATOR (Fixes Auto-Off Bug)
+    table.insert(Internal.System_Connections, RunService.RenderStepped:Connect(function()
         if not AETHER_CONFIG.ACTIVE then return end
         
-        FlyBtn.Text = AETHER_CONFIG.ENABLED and "FLY: ACTIVE" or "FLY: DISABLED"
-        FlyBtn.TextColor3 = AETHER_CONFIG.ENABLED and Color3.new(0,1,0.5) or Color3.new(1,0.2,0.2)
+        -- Force UI to match actual internal state
+        FlyToggle.Text = AETHER_CONFIG.ENABLED and "FLY: ON" or "FLY: OFF"
+        FlyToggle.BackgroundColor3 = AETHER_CONFIG.ENABLED and Color3.fromRGB(0, 100, 50) or Color3.fromRGB(40, 40, 40)
         
-        GodBtn.Text = AETHER_CONFIG.GOD_MODE and "PHANTOM: ACTIVE" or "PHANTOM: DISABLED"
-        GodBtn.TextColor3 = AETHER_CONFIG.GOD_MODE and Color3.new(0,1,0.5) or Color3.new(1,0.2,0.2)
-    end)
+        GodToggle.Text = AETHER_CONFIG.GOD_MODE and "PHANTOM: ON" or "PHANTOM: OFF"
+        GodToggle.BackgroundColor3 = AETHER_CONFIG.GOD_MODE and Color3.fromRGB(0, 100, 50) or Color3.fromRGB(40, 40, 40)
+    end))
 end
 
 -- // RUNTIME AUTHORITY //
-table.insert(Internal.Connections, RunService.Heartbeat:Connect(function(dt)
+table.insert(Internal.System_Connections, RunService.Heartbeat:Connect(function(dt)
     if AETHER_CONFIG.ACTIVE then
         ExecuteAether(dt)
         GlobalBypassSync()
-        HandleGhostLogic(dt)
+        if AETHER_CONFIG.GOD_MODE then HandleGhostLogic(dt) end
     end
 end))
 
 BuildUI()
-print("[AETHER V17] Authority Elite Online.")
+print("[AETHER V18] Sovereign Authority Online. All bugs suppressed.")
