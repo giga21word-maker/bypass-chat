@@ -1,97 +1,176 @@
--- // GHOST-SYNC: NEURO-LINK V23.7 //
--- FEATURE: Essence Retrieval (Brain Rot Interaction)
--- BYPASS: High-Frequency Jitter Stutter
--- SAFETY: Vector-Sync Anchor
+-- // OMNI-SOVEREIGN V24.0 //
+-- CORE: Advanced Physics Masking & Proxy Interaction
+-- SAFETY: Sentinel Tsunami Sensor + Void-Shield
+-- BYPASS: Jitter-Interpolation + Velocity Spoofing
 
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ProximityPromptService = game:GetService("ProximityPromptService")
 local CoreGui = game:GetService("CoreGui")
 local Workspace = game:GetService("Workspace")
+
 local LocalPlayer = Players.LocalPlayer
 local Camera = Workspace.CurrentCamera
 
--- // 1. CONFIGURATION AUTHORITY //
-local AETHER_CONFIG = {
+-- // 1. AUTHORITY CONFIGURATION //
+local SOVEREIGN_CONFIG = {
     ENABLED = false,
     PHANTOM = false,
-    SPEED = 85,
-    VERSION = "V23.7.0 - Neuro-Link",
+    SPEED = 92, -- Optimized for bypass thresholds
+    VERSION = "V24.0.0 - Omni-Sovereign",
     HOLE_X_OFFSET = 282,
     HOLE_INTERVAL = 84,
-    SAFE_Y = -3,
+    SAFE_Y = -3.2, -- Sub-floor offset for max safety
+    TSUNAMI_ACTIVE = false,
     ACTIVE = true
 }
 
 local Internal = {
     Ghost = nil,
-    GrabbedObject = nil,
     IsWarpping = false,
     Connections = {},
     Dragging = false,
-    DragOffset = Vector2.new(0, 0)
+    DragOffset = Vector2.new(0, 0),
+    CurrentFrame = nil,
+    HeldItem = nil
 }
 
--- // 2. INTERACTION MATH //
-local function GetNearestSafeHole(pos)
-    local relativeX = pos.X - AETHER_CONFIG.HOLE_X_OFFSET
-    local snapX = math.round(relativeX / AETHER_CONFIG.HOLE_INTERVAL) * AETHER_CONFIG.HOLE_INTERVAL
-    return Vector3.new(snapX + AETHER_CONFIG.HOLE_X_OFFSET, AETHER_CONFIG.SAFE_Y, pos.Z)
+-- // 2. SMART MATH: VALIDATED GRID //
+local function GetValidatedHole(pos)
+    local relX = pos.X - SOVEREIGN_CONFIG.HOLE_X_OFFSET
+    local snapX = math.round(relX / SOVEREIGN_CONFIG.HOLE_INTERVAL) * SOVEREIGN_CONFIG.HOLE_INTERVAL
+    local targetX = snapX + SOVEREIGN_CONFIG.HOLE_X_OFFSET
+    
+    -- Ground Validation: Raycast to ensure we aren't snapping to empty void
+    local rayParam = RaycastParams.new()
+    rayParam.FilterType = Enum.RaycastFilterType.Exclude
+    rayParam.FilterDescendantsInstances = {LocalPlayer.Character, Internal.Ghost}
+    
+    local ray = Workspace:Raycast(Vector3.new(targetX, 50, pos.Z), Vector3.new(0, -100, 0), rayParam)
+    local finalY = ray and (ray.Position.Y - 2.8) or SOVEREIGN_CONFIG.SAFE_Y
+    
+    return Vector3.new(targetX, finalY, pos.Z)
 end
 
--- // 3. STUTTER TELEPORT (FIXED) //
-local function StutterTP(targetCF)
+-- // 3. BYPASS ENGINE: JITTER-INTERPOLATION //
+local function SovereignTeleport(targetCF)
     local Root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not Root or Internal.IsWarpping then return end
     
     Internal.IsWarpping = true
     local startPos = Root.Position
     local endPos = targetCF.Position
-    local dist = (startPos - endPos).Magnitude
+    local distance = (startPos - endPos).Magnitude
     
-    if dist > 15 then
-        local steps = math.clamp(math.floor(dist/10), 5, 25)
+    -- High-End Bypass: Uses small bursts and physics resets
+    if distance > 10 then
+        local steps = math.clamp(math.floor(distance / 15), 5, 40)
         for i = 1, steps do
-            local alpha = i/steps
-            local lerpPos = startPos:Lerp(endPos, alpha)
+            if not SOVEREIGN_CONFIG.ACTIVE then break end
+            local alpha = i / steps
+            local nextHole = GetValidatedHole(startPos:Lerp(endPos, alpha))
             
-            -- High-Freq Jitter: Jumps 0.2 studs up/down/left/right to spoof movement
-            local jitter = Vector3.new(math.random(-2,2)/10, math.random(-2,2)/10, math.random(-2,2)/10)
-            Root.CFrame = CFrame.new(GetNearestSafeHole(lerpPos) + jitter)
+            -- Jitter Spoof: Randomize coordinates by 0.05 to mimic real movement noise
+            local jitter = Vector3.new(math.random(-5,5)/100, 0, math.random(-5,5)/100)
+            Root.CFrame = CFrame.new(nextHole + jitter)
             
+            -- Physics Masking: Tell the server we are falling/moving naturally
+            Root.AssemblyLinearVelocity = Vector3.new(0, -0.5, 0)
+            
+            if i % 3 == 0 then task.wait(0.04) end -- Anti-Cheat buffer
             RunService.Heartbeat:Wait()
         end
     end
     
+    -- Final Handshake: Wake up physics to prevent "Invincibility Freeze"
     Root.CFrame = targetCF
+    task.wait(0.1)
+    Root.Anchored = false
+    Root.AssemblyLinearVelocity = Vector3.new(0, 2, 0)
     Internal.IsWarpping = false
 end
 
--- // 4. BRAIN ROT RETRIEVAL SYSTEM //
-local function ScanForInteractable()
-    if not Internal.Ghost then return end
-    local GhostPos = Internal.Ghost.PrimaryPart.Position
-    
-    -- Looks for objects nearby the Phantom (Brain Rot, etc)
-    for _, item in pairs(Workspace:GetChildren()) do
-        if item:IsA("BasePart") and not item.Anchored and (item.Position - GhostPos).Magnitude < 10 then
-            return item
-        elseif item:IsA("Model") and item.PrimaryPart and (item.PrimaryPart.Position - GhostPos).Magnitude < 10 then
-            return item.PrimaryPart
+-- // 4. INTERACTION PROXY (PROXIMITY SYNC) //
+-- This allows your Ghost to trigger "E" prompts on Brain Rot items
+ProximityPromptService.PromptButtonHoldBegan:Connect(function(prompt)
+    if SOVEREIGN_CONFIG.PHANTOM and Internal.Ghost then
+        local dist = (Internal.Ghost.PrimaryPart.Position - prompt.Parent.WorldPosition).Magnitude
+        if dist < (prompt.MaxActivationDistance + 5) then
+            -- Force interaction if the ghost is close enough
+            prompt:InputHoldBegin()
         end
     end
-    return nil
+end)
+
+-- // 5. TSUNAMI SENTINEL (SENSORS) //
+task.spawn(function()
+    while SOVEREIGN_CONFIG.ACTIVE do
+        -- Scan for parts named "Water" or "Wave" or "KillPart" with high Y-values
+        local waveFound = false
+        for _, v in pairs(Workspace:GetChildren()) do
+            if (v.Name:lower():find("water") or v.Name:lower():find("wave")) and v:IsA("BasePart") then
+                if v.Position.Y > 10 then waveFound = true break end
+            end
+        end
+        SOVEREIGN_CONFIG.TSUNAMI_ACTIVE = waveFound
+        task.wait(1)
+    end
+end)
+
+-- // 6. GHOST CORE //
+local function TogglePhantom(state)
+    local Char = LocalPlayer.Character
+    local Root = Char:FindFirstChild("HumanoidRootPart")
+    if not Root then return end
+
+    if state then
+        -- ENTER GHOST MODE
+        Char.Archivable = true
+        Internal.Ghost = Char:Clone()
+        Internal.Ghost.Name = "Omni_Ghost"
+        Internal.Ghost.Parent = Workspace
+        
+        for _, v in pairs(Internal.Ghost:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.Transparency = 0.5
+                v.CanCollide = false
+                v.Anchored = true
+                v.Color = Color3.fromRGB(0, 255, 180)
+            end
+        end
+        
+        -- Lock real body in validated safe hole
+        Root.CFrame = CFrame.new(GetValidatedHole(Root.Position))
+        Root.Anchored = true
+    else
+        -- EXIT GHOST MODE
+        if SOVEREIGN_CONFIG.TSUNAMI_ACTIVE then
+            warn("[SENTINEL] TSUNAMI DETECTED. RETURN BLOCKED FOR SAFETY.")
+            return false
+        end
+
+        local finalCF = Internal.Ghost.PrimaryPart.CFrame
+        Internal.Ghost:Destroy()
+        Internal.Ghost = nil
+        Camera.CameraSubject = Char:FindFirstChildOfClass("Humanoid")
+        
+        task.spawn(function()
+            SovereignTeleport(finalCF)
+        end)
+    end
+    return true
 end
 
--- // 5. CORE LOGIC //
+-- // 7. RUNTIME AUTHORITY //
 local function ExecuteLogic(dt)
-    if not AETHER_CONFIG.ACTIVE then return end
+    if not SOVEREIGN_CONFIG.ACTIVE then return end
     local Char = LocalPlayer.Character
     local Root = Char and Char:FindFirstChild("HumanoidRootPart")
     local Hum = Char and Char:FindFirstChildOfClass("Humanoid")
     if not Root or not Hum then return end
 
-    if AETHER_CONFIG.PHANTOM and Internal.Ghost then
+    if SOVEREIGN_CONFIG.PHANTOM and Internal.Ghost then
         Camera.CameraSubject = Internal.Ghost:FindFirstChildOfClass("Humanoid")
         local GhostRoot = Internal.Ghost:FindFirstChild("HumanoidRootPart")
         
@@ -99,90 +178,72 @@ local function ExecuteLogic(dt)
             local MoveDir = Hum.MoveDirection
             if MoveDir.Magnitude > 0 then
                 local look = Camera.CFrame.LookVector
-                local rot = CFrame.lookAt(GhostRoot.Position, GhostRoot.Position + Vector3.new(look.X, 0, look.Z))
-                GhostRoot.CFrame = rot + (MoveDir * AETHER_CONFIG.SPEED * dt)
-            end
-            
-            -- Interaction: Keep grabbed object at Phantom
-            if Internal.GrabbedObject then
-                Internal.GrabbedObject.CFrame = GhostRoot.CFrame * CFrame.new(0, 0, -3)
-                Internal.GrabbedObject.AssemblyLinearVelocity = Vector3.zero
+                local moveVec = (Vector3.new(look.X, 0, look.Z).Unit * MoveDir.Z) + (Camera.CFrame.RightVector * MoveDir.X)
+                GhostRoot.CFrame = GhostRoot.CFrame + (moveVec * SOVEREIGN_CONFIG.SPEED * dt)
             end
         end
-        
-        -- ANCHOR REAL BODY IN SAFE HOLE
-        Root.CFrame = CFrame.new(GetNearestSafeHole(Root.Position))
+        -- Hard-Lock real body safely
+        Root.CFrame = CFrame.new(GetValidatedHole(Root.Position))
         Root.Anchored = true
-        Root.AssemblyLinearVelocity = Vector3.zero
     end
 end
 
--- // 6. UI CONSTRUCTION //
+-- // 8. ADVANCED UI //
 local function BuildUI()
-    if CoreGui:FindFirstChild("NeuroApex") then CoreGui.NeuroApex:Destroy() end
+    if CoreGui:FindFirstChild("OmniApex") then CoreGui.OmniApex:Destroy() end
     local Screen = Instance.new("ScreenGui", CoreGui)
-    Screen.Name = "NeuroApex"
-    
+    Screen.Name = "OmniApex"
+
     local Main = Instance.new("Frame", Screen)
-    Main.Size = UDim2.new(0, 240, 0, 180)
+    Main.Size = UDim2.new(0, 240, 0, 140)
     Main.Position = UDim2.new(0.5, -120, 0.4, 0)
     Main.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
     Instance.new("UICorner", Main)
-    Instance.new("UIStroke", Main).Color = Color3.fromRGB(0, 255, 180)
+    local Stroke = Instance.new("UIStroke", Main)
+    Stroke.Color = Color3.fromRGB(0, 255, 180)
+    Stroke.Thickness = 2
 
-    local function CreateBtn(txt, pos, call)
-        local b = Instance.new("TextButton", Main)
-        b.Size = UDim2.new(0, 200, 0, 40)
-        b.Position = pos
-        b.Text = txt
-        b.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-        b.TextColor3 = Color3.new(1,1,1)
-        b.Font = Enum.Font.GothamBold
-        Instance.new("UICorner", b)
-        b.MouseButton1Down:Connect(function() call(b) end)
-    end
+    local StatusLabel = Instance.new("TextLabel", Main)
+    StatusLabel.Size = UDim2.new(1, 0, 0, 30)
+    StatusLabel.Text = "SYSTEM: READY"
+    StatusLabel.TextColor3 = Color3.new(0.6, 0.6, 0.6)
+    StatusLabel.Font = Enum.Font.GothamBold
+    StatusLabel.TextSize = 10
+    StatusLabel.BackgroundTransparency = 1
 
-    CreateBtn("TOGGLE PHANTOM", UDim2.new(0.1, 0, 0.15, 0), function(b)
-        AETHER_CONFIG.PHANTOM = not AETHER_CONFIG.PHANTOM
-        if AETHER_CONFIG.PHANTOM then
-            local Char = LocalPlayer.Character
-            Char.Archivable = true
-            Internal.Ghost = Char:Clone()
-            Internal.Ghost.Parent = Workspace
-            for _, v in pairs(Internal.Ghost:GetDescendants()) do
-                if v:IsA("BasePart") then v.Transparency = 0.5 v.CanCollide = false v.Anchored = true end
-            end
-            b.Text = "PHANTOM: ON"
+    local B = Instance.new("TextButton", Main)
+    B.Size = UDim2.new(0, 200, 0, 60)
+    B.Position = UDim2.new(0, 20, 0, 40)
+    B.Text = "ACTIVATE PHANTOM"
+    B.Font = Enum.Font.GothamBlack
+    B.TextColor3 = Color3.new(1,1,1)
+    B.BackgroundColor3 = Color3.fromRGB(20,20,20)
+    Instance.new("UICorner", B)
+
+    -- Dynamic UI Updates
+    RunService.Heartbeat:Connect(function()
+        if SOVEREIGN_CONFIG.TSUNAMI_ACTIVE then
+            StatusLabel.Text = "WARNING: TSUNAMI DETECTED"
+            StatusLabel.TextColor3 = Color3.new(1, 0, 0)
+            Stroke.Color = Color3.new(1, 0, 0)
         else
-            if Internal.Ghost then
-                local finalPos = Internal.Ghost.PrimaryPart.CFrame
-                Internal.Ghost:Destroy()
-                Internal.Ghost = nil
-                Camera.CameraSubject = LocalPlayer.Character:FindFirstChildOfClass("Humanoid")
-                StutterTP(finalPos)
-            end
-            b.Text = "PHANTOM: OFF"
+            StatusLabel.Text = SOVEREIGN_CONFIG.PHANTOM and "STATUS: GHOST ACTIVE" or "STATUS: STANDBY"
+            StatusLabel.TextColor3 = Color3.fromRGB(0, 255, 180)
+            Stroke.Color = Color3.fromRGB(0, 255, 180)
         end
     end)
 
-    CreateBtn("GRAB NEARBY", UDim2.new(0.1, 0, 0.5, 0), function(b)
-        if not Internal.GrabbedObject then
-            local target = ScanForInteractable()
-            if target then
-                Internal.GrabbedObject = target
-                b.Text = "GRABBED!"
-                b.TextColor3 = Color3.fromRGB(0, 255, 180)
-            else
-                b.Text = "NOTHING NEARBY"
-                task.wait(1)
-                b.Text = "GRAB NEARBY"
+    B.MouseButton1Down:Connect(function()
+        if not SOVEREIGN_CONFIG.PHANTOM then
+            if TogglePhantom(true) then
+                SOVEREIGN_CONFIG.PHANTOM = true
+                B.Text = "DEACTIVATE"
             end
         else
-            Internal.GrabbedObject = nil
-            b.Text = "RELEASED"
-            b.TextColor3 = Color3.new(1,1,1)
-            task.wait(1)
-            b.Text = "GRAB NEARBY"
+            if TogglePhantom(false) then
+                SOVEREIGN_CONFIG.PHANTOM = false
+                B.Text = "ACTIVATE PHANTOM"
+            end
         end
     end)
 end
