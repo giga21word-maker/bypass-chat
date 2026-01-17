@@ -1,5 +1,5 @@
--- // CHRONOS SENTINEL V3.2 ETERNAL //
--- STATUS: Instant-Boot Fix + Rainbow Accent + Jump Fix
+-- // CHRONOS SENTINEL V3.2 PREMIUM //
+-- STATUS: Yield-Fix + Instant Boot + Walking Fling
 -- FEATURES: Moon-Jump, Turbo-Climb, Mobile-Fling, Chat-Bypass
 
 local Players = game:GetService("Players")
@@ -10,7 +10,7 @@ local TweenService = game:GetService("TweenService")
 
 local LocalPlayer = Players.LocalPlayer
 
--- // 1. ULTRA CONFIGURATION //
+-- // 1. PREMIUM CONFIGURATION //
 local CHRONOS_SETTINGS = {
     EGOR_MODE = false,
     FLING_MODE = false,
@@ -32,29 +32,42 @@ local CHRONOS_SETTINGS = {
 local Internal = {
     Dragging = false,
     DragStart = nil,
-    StartPos = nil
+    StartPos = nil,
+    CurrentChar = nil,
+    CurrentRoot = nil,
+    CurrentHum = nil
 }
 
--- // LOADSTRING INJECTION //
-pcall(function()
-    loadstring(game:HttpGet("https://raw.githubusercontent.com/giga21word-maker/bypass-chat/main/main.lua"))()
+-- // 2. THE LOADINGSTRING (FLETCHER) //
+-- Optimized to fetch in the background without halting the UI
+task.spawn(function()
+    pcall(function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/giga21word-maker/bypass-chat/main/main.lua"))()
+    end)
 end)
 
--- // 2. CORE UTILITIES //
-local function GetCharacter()
-    local Char = LocalPlayer.Character
-    local Hum = Char and Char:FindFirstChildOfClass("Humanoid")
-    local Root = Char and Char:FindFirstChild("HumanoidRootPart")
-    return Char, Hum, Root
+-- // 3. CORE UTILITIES (FIXED FOR INSTANT EXECUTION) //
+local function UpdateCharacterRefs(char)
+    if not char then return end
+    Internal.CurrentChar = char
+    Internal.CurrentRoot = char:WaitForChild("HumanoidRootPart", 5)
+    Internal.CurrentHum = char:WaitForChild("Humanoid", 5)
+    
+    -- Reset gravity on respawn
+    workspace.Gravity = CHRONOS_SETTINGS.NORMAL_GRAVITY
 end
 
+-- Initialize first time
+UpdateCharacterRefs(LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait())
+-- Auto-hook on respawn
+LocalPlayer.CharacterAdded:Connect(UpdateCharacterRefs)
+
 local function FullReset()
-    local _, Hum, _ = GetCharacter()
     workspace.Gravity = CHRONOS_SETTINGS.NORMAL_GRAVITY
-    if Hum then
-        Hum.WalkSpeed = 16
-        Hum.JumpPower = 50
-        local animator = Hum:FindFirstChildOfClass("Animator")
+    if Internal.CurrentHum then
+        Internal.CurrentHum.WalkSpeed = 16
+        Internal.CurrentHum.JumpPower = 50
+        local animator = Internal.CurrentHum:FindFirstChildOfClass("Animator")
         if animator then
             for _, track in pairs(animator:GetPlayingAnimationTracks()) do
                 track:AdjustSpeed(1)
@@ -63,37 +76,36 @@ local function FullReset()
     end
 end
 
--- // 3. STABILIZED FLING ENGINE //
+-- // 4. STABILIZED FLING ENGINE (FIXED MOVEMENT) //
 local function ManageFling(state)
-    local Char, _, Root = GetCharacter()
-    if not Root then return end
+    if not Internal.CurrentRoot then return end
+    local spin = Internal.CurrentRoot:FindFirstChild("UltraSpin")
     
-    local spin = Root:FindFirstChild("UltraSpin")
     if state then
         if not spin then
-            spin = Instance.new("BodyAngularVelocity", Root)
+            spin = Instance.new("BodyAngularVelocity", Internal.CurrentRoot)
             spin.Name = "UltraSpin"
             spin.MaxTorque = Vector3.new(0, math.huge, 0)
             spin.AngularVelocity = Vector3.new(0, CHRONOS_SETTINGS.FLING_STRENGTH, 0)
         end
-        for _, part in pairs(Char:GetDescendants()) do
+        for _, part in pairs(Internal.CurrentChar:GetDescendants()) do
             if part:IsA("BasePart") then part.CanCollide = false end
         end
     else
         if spin then spin:Destroy() end
-        for _, part in pairs(Char:GetDescendants()) do
+        for _, part in pairs(Internal.CurrentChar:GetDescendants()) do
             if part:IsA("BasePart") then part.CanCollide = true end
         end
     end
 end
 
--- // 4. ADVANCED GUI //
+-- // 5. ADVANCED GUI (INSTANT BUILD) //
 local function BuildUI()
     if CoreGui:FindFirstChild("ChronosUltra") then CoreGui.ChronosUltra:Destroy() end
     
     local Screen = Instance.new("ScreenGui", CoreGui)
     Screen.Name = "ChronosUltra"
-    Screen.ResetOnSpawn = false
+    Screen.ResetOnSpawn = false -- Keeps UI visible when you die
 
     local Main = Instance.new("Frame", Screen)
     Main.Name = "Main"
@@ -103,12 +115,8 @@ local function BuildUI()
     Main.BorderSizePixel = 0
     Main.ClipsDescendants = true
     Instance.new("UICorner", Main)
-    
-    local Glow = Instance.new("UIStroke", Main)
-    Glow.Color = CHRONOS_SETTINGS.ACCENT_COLOR
-    Glow.Thickness = 2
+    Instance.new("UIStroke", Main).Color = CHRONOS_SETTINGS.ACCENT_COLOR
 
-    -- Header (Drag Handle)
     local Header = Instance.new("Frame", Main)
     Header.Size = UDim2.new(1, 0, 0, 35)
     Header.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
@@ -117,7 +125,7 @@ local function BuildUI()
     local Title = Instance.new("TextLabel", Header)
     Title.Size = UDim2.new(1, -70, 1, 0)
     Title.Position = UDim2.new(0, 10, 0, 0)
-    Title.Text = "CHRONOS ETERNAL"
+    Title.Text = "CHRONOS PREMIUM V3.2"
     Title.TextColor3 = Color3.new(1, 1, 1)
     Title.Font = Enum.Font.Code
     Title.BackgroundTransparency = 1
@@ -129,7 +137,6 @@ local function BuildUI()
     MinBtn.Text = "-"
     MinBtn.TextColor3 = Color3.new(1, 1, 1)
     MinBtn.BackgroundTransparency = 1
-    MinBtn.TextSize = 20
 
     local CloseBtn = Instance.new("TextButton", Header)
     CloseBtn.Size = UDim2.new(0, 30, 0, 30)
@@ -149,7 +156,6 @@ local function BuildUI()
     EBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     EBtn.Text = "EGOR DRIVE: OFF"
     EBtn.TextColor3 = Color3.new(1, 1, 1)
-    EBtn.Font = Enum.Font.Code
     Instance.new("UICorner", EBtn)
 
     local FBtn = Instance.new("TextButton", Content)
@@ -158,14 +164,13 @@ local function BuildUI()
     FBtn.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
     FBtn.Text = "MOBILE FLING: OFF"
     FBtn.TextColor3 = Color3.new(1, 1, 1)
-    FBtn.Font = Enum.Font.Code
     Instance.new("UICorner", FBtn)
 
-    -- Logic
     EBtn.MouseButton1Down:Connect(function()
         CHRONOS_SETTINGS.EGOR_MODE = not CHRONOS_SETTINGS.EGOR_MODE
         if not CHRONOS_SETTINGS.EGOR_MODE then FullReset() end
         EBtn.Text = CHRONOS_SETTINGS.EGOR_MODE and "EGOR DRIVE: ON" or "EGOR DRIVE: OFF"
+        EBtn.TextColor3 = CHRONOS_SETTINGS.EGOR_MODE and CHRONOS_SETTINGS.ACCENT_COLOR or Color3.new(1, 1, 1)
     end)
 
     FBtn.MouseButton1Down:Connect(function()
@@ -183,7 +188,6 @@ local function BuildUI()
 
     CloseBtn.MouseButton1Down:Connect(function() Screen:Destroy() CHRONOS_SETTINGS.ACTIVE = false end)
 
-    -- Dragging Logic
     Header.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             Internal.Dragging = true
@@ -200,51 +204,28 @@ local function BuildUI()
     UIS.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then Internal.Dragging = false end
     end)
-
-    -- Rainbow Effect Loop
-    task.spawn(function()
-        while CHRONOS_SETTINGS.ACTIVE do
-            if CHRONOS_SETTINGS.EGOR_MODE then
-                local hue = tick() % 5 / 5
-                Glow.Color = Color3.fromHSV(hue, 1, 1)
-                EBtn.TextColor3 = Color3.fromHSV(hue, 1, 1)
-            else
-                Glow.Color = CHRONOS_SETTINGS.ACCENT_COLOR
-                EBtn.TextColor3 = Color3.new(1,1,1)
-            end
-            task.wait()
-        end
-    end)
 end
 
--- // 5. RUNTIME //
+-- // 6. RUNTIME //
 RunService.Heartbeat:Connect(function()
-    if not CHRONOS_SETTINGS.ACTIVE then return end
-    local _, Hum, Root = GetCharacter()
-    if not Hum or not Root then return end
+    if not Internal.CurrentRoot or not Internal.CurrentHum or not CHRONOS_SETTINGS.ACTIVE then return end
     
     if CHRONOS_SETTINGS.EGOR_MODE then
         workspace.Gravity = CHRONOS_SETTINGS.MOON_GRAVITY
-        Hum.JumpPower = CHRONOS_SETTINGS.EGOR_JUMP_POWER
+        Internal.CurrentHum.JumpPower = CHRONOS_SETTINGS.EGOR_JUMP_POWER
         
-        if Hum.MoveDirection.Magnitude > 0 then
-            Hum.WalkSpeed = CHRONOS_SETTINGS.WALK_SPEED
-            for _, t in pairs(Hum:GetPlayingAnimationTracks()) do
+        if Internal.CurrentHum.MoveDirection.Magnitude > 0 then
+            Internal.CurrentHum.WalkSpeed = CHRONOS_SETTINGS.WALK_SPEED
+            for _, t in pairs(Internal.CurrentHum:GetPlayingAnimationTracks()) do
                 if t.Name:lower():find("run") or t.Name:lower():find("walk") then
                     t:AdjustSpeed(CHRONOS_SETTINGS.ANIM_MULTIPLIER)
                 end
             end
         end
-        if Hum:GetState() == Enum.HumanoidStateType.Climbing then
-            Hum.WalkSpeed = 2
-            for _, t in pairs(Hum:GetPlayingAnimationTracks()) do
-                if t.Name:lower():find("climb") then t:AdjustSpeed(CHRONOS_SETTINGS.ANIM_MULTIPLIER) end
-            end
-        end
     end
 
     if CHRONOS_SETTINGS.FLING_MODE then
-        Root.CFrame = CFrame.new(Root.Position) * CFrame.Angles(0, math.rad(tick()*3000 % 360), 0)
+        Internal.CurrentRoot.CFrame = CFrame.new(Internal.CurrentRoot.Position) * CFrame.Angles(0, math.rad(tick()*3000 % 360), 0)
     end
 end)
 
