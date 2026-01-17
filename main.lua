@@ -1,5 +1,5 @@
--- // CHRONOS SENTINEL V3.5 PREMIUM //
--- STATUS: Logic Lock Fixed + Toggle Sync + Optimized Drag
+-- // CHRONOS SENTINEL V3.6 PREMIUM //
+-- STATUS: Physics Fix + Stable Fling + Hyper-Anim Sync
 -- FEATURES: Moon-Jump, Turbo-Climb, Mobile-Fling, Chat-Bypass
 
 local Players = game:GetService("Players")
@@ -40,7 +40,7 @@ local Internal = {
 }
 
 -- // 2. THE LOADINGSTRING (FLETCHER) //
-if not _G.ChronosLoaded then -- Prevents the "Infinite Loading" bug
+if not _G.ChronosLoaded then 
     _G.ChronosLoaded = true
     task.spawn(function()
         pcall(function()
@@ -50,7 +50,7 @@ if not _G.ChronosLoaded then -- Prevents the "Infinite Loading" bug
     end)
 end
 
--- // 3. CORE UTILITIES (REPAIRED) //
+-- // 3. CORE UTILITIES (UPGRADED PHYSICS) //
 local function UpdateCharacterRefs(char)
     if not char then return end
     Internal.CurrentChar = char
@@ -68,6 +68,7 @@ local function FullReset()
     if Internal.CurrentHum then
         Internal.CurrentHum.WalkSpeed = 16
         Internal.CurrentHum.JumpPower = 50
+        Internal.CurrentHum.UseJumpPower = false -- Restore default behavior
         local animator = Internal.CurrentHum:FindFirstChildOfClass("Animator")
         if animator then
             for _, track in pairs(animator:GetPlayingAnimationTracks()) do
@@ -77,16 +78,18 @@ local function FullReset()
     end
 end
 
--- // 4. STABILIZED FLING ENGINE //
+-- // 4. STABILIZED FLING ENGINE (FIXED STABILITY) //
 local function ManageFling(state)
     if not Internal.CurrentRoot then return end
     local spin = Internal.CurrentRoot:FindFirstChild("UltraSpin")
     
     if state then
         if not spin then
-            spin = Instance.new("BodyAngularVelocity", Internal.CurrentRoot)
+            spin = Instance.new("BodyAngularVelocity")
             spin.Name = "UltraSpin"
-            spin.MaxTorque = Vector3.new(0, math.huge, 0)
+            spin.Parent = Internal.CurrentRoot
+            spin.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+            spin.P = 1250
             spin.AngularVelocity = Vector3.new(0, CHRONOS_SETTINGS.FLING_STRENGTH, 0)
         end
         for _, part in pairs(Internal.CurrentChar:GetDescendants()) do
@@ -100,7 +103,7 @@ local function ManageFling(state)
     end
 end
 
--- // 5. ADVANCED GUI (FULLY RE-WIRED FOR CLOZE/MINIMIZE) //
+-- // 5. ADVANCED GUI (V3.6) //
 local function BuildUI()
     if CoreGui:FindFirstChild("ChronosUltra") then CoreGui.ChronosUltra:Destroy() end
     
@@ -124,13 +127,13 @@ local function BuildUI()
     local Header = Instance.new("Frame", Main)
     Header.Size = UDim2.new(1, 0, 0, 35)
     Header.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    Header.ZIndex = 10 -- Increased ZIndex for click priority
+    Header.ZIndex = 10
     Instance.new("UICorner", Header)
     
     local Title = Instance.new("TextLabel", Header)
     Title.Size = UDim2.new(1, -70, 1, 0)
     Title.Position = UDim2.new(0, 10, 0, 0)
-    Title.Text = "CHRONOS PREMIUM V3.5"
+    Title.Text = "CHRONOS PREMIUM V3.6"
     Title.TextColor3 = Color3.new(1, 1, 1)
     Title.Font = Enum.Font.Code
     Title.BackgroundTransparency = 1
@@ -178,12 +181,10 @@ local function BuildUI()
     FBtn.ZIndex = 6
     Instance.new("UICorner", FBtn)
 
-    -- // FIXED TOGGLE INTERACTIONS (GUARANTEED OFF) //
+    -- // FIXED TOGGLE INTERACTIONS //
     EBtn.MouseButton1Click:Connect(function()
         CHRONOS_SETTINGS.EGOR_MODE = not CHRONOS_SETTINGS.EGOR_MODE
-        if not CHRONOS_SETTINGS.EGOR_MODE then 
-            FullReset() 
-        end
+        if not CHRONOS_SETTINGS.EGOR_MODE then FullReset() end
         EBtn.Text = CHRONOS_SETTINGS.EGOR_MODE and "EGOR DRIVE: ON" or "EGOR DRIVE: OFF"
         EBtn.TextColor3 = CHRONOS_SETTINGS.EGOR_MODE and CHRONOS_SETTINGS.ACCENT_COLOR or Color3.new(1, 1, 1)
     end)
@@ -206,13 +207,11 @@ local function BuildUI()
         end
     end)
 
-    -- // FIXED MINIMIZE/CLOSE SYSTEM //
+    -- // FIXED MINIMIZE/CLOSE //
     MinBtn.MouseButton1Click:Connect(function()
         CHRONOS_SETTINGS.MINIMIZED = not CHRONOS_SETTINGS.MINIMIZED
         local TargetSize = CHRONOS_SETTINGS.MINIMIZED and UDim2.new(0, 220, 0, 35) or UDim2.new(0, 220, 0, 160)
-        
         if CHRONOS_SETTINGS.MINIMIZED then Content.Visible = false end
-        
         local Tween = TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = TargetSize})
         Tween:Play()
         Tween.Completed:Connect(function()
@@ -246,20 +245,25 @@ local function BuildUI()
     end)
 end
 
--- // 6. RUNTIME //
+-- // 6. RUNTIME (PHYSICS OPTIMIZED) //
 RunService.Heartbeat:Connect(function()
     if not Internal.CurrentRoot or not Internal.CurrentHum or not CHRONOS_SETTINGS.ACTIVE then return end
     
     if CHRONOS_SETTINGS.EGOR_MODE then
         workspace.Gravity = CHRONOS_SETTINGS.MOON_GRAVITY
-        Internal.CurrentHum.JumpPower = CHRONOS_SETTINGS.EGOR_JUMP_POWER
+        
+        -- Improved Jump Handling: Only apply power if the player is actually in a jump state
+        if Internal.CurrentHum.Jump then
+            Internal.CurrentHum.JumpPower = CHRONOS_SETTINGS.EGOR_JUMP_POWER
+        end
         
         if Internal.CurrentHum.MoveDirection.Magnitude > 0 then
             Internal.CurrentHum.WalkSpeed = CHRONOS_SETTINGS.WALK_SPEED
             local animator = Internal.CurrentHum:FindFirstChildOfClass("Animator")
             if animator then
                 for _, t in pairs(animator:GetPlayingAnimationTracks()) do
-                    if t.Name:lower():find("run") or t.Name:lower():find("walk") then
+                    -- High-speed sync logic
+                    if t.Name:lower():find("run") or t.Name:lower():find("walk") or t.Name:lower():find("idle") then
                         t:AdjustSpeed(CHRONOS_SETTINGS.ANIM_MULTIPLIER)
                     end
                 end
@@ -268,7 +272,8 @@ RunService.Heartbeat:Connect(function()
     end
 
     if CHRONOS_SETTINGS.FLING_MODE then
-        Internal.CurrentRoot.CFrame = CFrame.new(Internal.CurrentRoot.Position) * CFrame.Angles(0, math.rad(tick()*3000 % 360), 0)
+        -- Apply rotational stability via CFrame to prevent "Slow Motion" physics
+        Internal.CurrentRoot.CFrame = Internal.CurrentRoot.CFrame * CFrame.Angles(0, math.rad(90), 0)
     end
 end)
 
