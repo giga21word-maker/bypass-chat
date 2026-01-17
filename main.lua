@@ -1,5 +1,5 @@
--- // CHRONOS SENTINEL V3.4 PREMIUM //
--- STATUS: Minimize Fix + Toggle Sync + Rainbow Glow
+-- // CHRONOS SENTINEL V3.5 PREMIUM //
+-- STATUS: Logic Lock Fixed + Toggle Sync + Optimized Drag
 -- FEATURES: Moon-Jump, Turbo-Climb, Mobile-Fling, Chat-Bypass
 
 local Players = game:GetService("Players")
@@ -35,19 +35,22 @@ local Internal = {
     StartPos = nil,
     CurrentChar = nil,
     CurrentRoot = nil,
-    CurrentHum = nil
+    CurrentHum = nil,
+    InitialLoad = false
 }
 
 -- // 2. THE LOADINGSTRING (FLETCHER) //
-task.spawn(function()
-    pcall(function()
-        -- Cache-Buster included to ensure latest GitHub version
-        local FreshURL = "https://raw.githubusercontent.com/giga21word-maker/bypass-chat/main/main.lua?t=" .. tick()
-        loadstring(game:HttpGet(FreshURL))()
+if not _G.ChronosLoaded then -- Prevents the "Infinite Loading" bug
+    _G.ChronosLoaded = true
+    task.spawn(function()
+        pcall(function()
+            local FreshURL = "https://raw.githubusercontent.com/giga21word-maker/bypass-chat/main/main.lua?t=" .. tick()
+            loadstring(game:HttpGet(FreshURL))()
+        end)
     end)
-end)
+end
 
--- // 3. CORE UTILITIES (UPGRADED) //
+-- // 3. CORE UTILITIES (REPAIRED) //
 local function UpdateCharacterRefs(char)
     if not char then return end
     Internal.CurrentChar = char
@@ -57,7 +60,6 @@ local function UpdateCharacterRefs(char)
     workspace.Gravity = CHRONOS_SETTINGS.NORMAL_GRAVITY
 end
 
--- Hooking system (No deletions)
 if LocalPlayer.Character then UpdateCharacterRefs(LocalPlayer.Character) end
 LocalPlayer.CharacterAdded:Connect(UpdateCharacterRefs)
 
@@ -98,7 +100,7 @@ local function ManageFling(state)
     end
 end
 
--- // 5. ADVANCED GUI (UPGRADED VISUALS) //
+-- // 5. ADVANCED GUI (FULLY RE-WIRED FOR CLOZE/MINIMIZE) //
 local function BuildUI()
     if CoreGui:FindFirstChild("ChronosUltra") then CoreGui.ChronosUltra:Destroy() end
     
@@ -122,18 +124,18 @@ local function BuildUI()
     local Header = Instance.new("Frame", Main)
     Header.Size = UDim2.new(1, 0, 0, 35)
     Header.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
-    Header.ZIndex = 6
+    Header.ZIndex = 10 -- Increased ZIndex for click priority
     Instance.new("UICorner", Header)
     
     local Title = Instance.new("TextLabel", Header)
     Title.Size = UDim2.new(1, -70, 1, 0)
     Title.Position = UDim2.new(0, 10, 0, 0)
-    Title.Text = "CHRONOS PREMIUM V3.4"
+    Title.Text = "CHRONOS PREMIUM V3.5"
     Title.TextColor3 = Color3.new(1, 1, 1)
     Title.Font = Enum.Font.Code
     Title.BackgroundTransparency = 1
     Title.TextXAlignment = Enum.TextXAlignment.Left
-    Title.ZIndex = 7
+    Title.ZIndex = 11
 
     local MinBtn = Instance.new("TextButton", Header)
     MinBtn.Size = UDim2.new(0, 30, 0, 30)
@@ -141,7 +143,7 @@ local function BuildUI()
     MinBtn.Text = "-"
     MinBtn.TextColor3 = Color3.new(1, 1, 1)
     MinBtn.BackgroundTransparency = 1
-    MinBtn.ZIndex = 7
+    MinBtn.ZIndex = 12
 
     local CloseBtn = Instance.new("TextButton", Header)
     CloseBtn.Size = UDim2.new(0, 30, 0, 30)
@@ -149,9 +151,10 @@ local function BuildUI()
     CloseBtn.Text = "X"
     CloseBtn.TextColor3 = Color3.new(1, 0.3, 0.3)
     CloseBtn.BackgroundTransparency = 1
-    CloseBtn.ZIndex = 7
+    CloseBtn.ZIndex = 12
 
     local Content = Instance.new("Frame", Main)
+    Content.Name = "Content"
     Content.Size = UDim2.new(1, 0, 1, -35)
     Content.Position = UDim2.new(0, 0, 0, 35)
     Content.BackgroundTransparency = 1
@@ -175,22 +178,24 @@ local function BuildUI()
     FBtn.ZIndex = 6
     Instance.new("UICorner", FBtn)
 
-    -- // FIXED TOGGLE INTERACTIONS //
-    EBtn.MouseButton1Down:Connect(function()
+    -- // FIXED TOGGLE INTERACTIONS (GUARANTEED OFF) //
+    EBtn.MouseButton1Click:Connect(function()
         CHRONOS_SETTINGS.EGOR_MODE = not CHRONOS_SETTINGS.EGOR_MODE
-        if not CHRONOS_SETTINGS.EGOR_MODE then FullReset() end
+        if not CHRONOS_SETTINGS.EGOR_MODE then 
+            FullReset() 
+        end
         EBtn.Text = CHRONOS_SETTINGS.EGOR_MODE and "EGOR DRIVE: ON" or "EGOR DRIVE: OFF"
         EBtn.TextColor3 = CHRONOS_SETTINGS.EGOR_MODE and CHRONOS_SETTINGS.ACCENT_COLOR or Color3.new(1, 1, 1)
     end)
 
-    FBtn.MouseButton1Down:Connect(function()
+    FBtn.MouseButton1Click:Connect(function()
         CHRONOS_SETTINGS.FLING_MODE = not CHRONOS_SETTINGS.FLING_MODE
+        ManageFling(CHRONOS_SETTINGS.FLING_MODE)
         FBtn.Text = CHRONOS_SETTINGS.FLING_MODE and "FLING: ACTIVE" or "MOBILE FLING: OFF"
         FBtn.TextColor3 = CHRONOS_SETTINGS.FLING_MODE and Color3.new(1, 0.2, 0.2) or Color3.new(1, 1, 1)
-        ManageFling(CHRONOS_SETTINGS.FLING_MODE)
     end)
 
-    -- // ADVANCED RAINBOW GLOW EFFECT //
+    -- // RAINBOW GLOW //
     task.spawn(function()
         while task.wait() and CHRONOS_SETTINGS.ACTIVE do
             if CHRONOS_SETTINGS.EGOR_MODE then
@@ -201,28 +206,28 @@ local function BuildUI()
         end
     end)
 
-    -- // FIXED MINIMIZE SYSTEM (SMOOTH TRANSITION) //
-    MinBtn.MouseButton1Down:Connect(function()
+    -- // FIXED MINIMIZE/CLOSE SYSTEM //
+    MinBtn.MouseButton1Click:Connect(function()
         CHRONOS_SETTINGS.MINIMIZED = not CHRONOS_SETTINGS.MINIMIZED
         local TargetSize = CHRONOS_SETTINGS.MINIMIZED and UDim2.new(0, 220, 0, 35) or UDim2.new(0, 220, 0, 160)
         
-        if CHRONOS_SETTINGS.MINIMIZED then
-            -- Immediate hide for snappy feel
-            Content.Visible = false
-        end
+        if CHRONOS_SETTINGS.MINIMIZED then Content.Visible = false end
         
         local Tween = TweenService:Create(Main, TweenInfo.new(0.3, Enum.EasingStyle.Quart, Enum.EasingDirection.Out), {Size = TargetSize})
         Tween:Play()
         Tween.Completed:Connect(function()
-            if not CHRONOS_SETTINGS.MINIMIZED then
-                Content.Visible = true
-            end
+            if not CHRONOS_SETTINGS.MINIMIZED then Content.Visible = true end
         end)
     end)
 
-    CloseBtn.MouseButton1Down:Connect(function() Screen:Destroy() CHRONOS_SETTINGS.ACTIVE = false end)
+    CloseBtn.MouseButton1Click:Connect(function() 
+        FullReset()
+        ManageFling(false)
+        CHRONOS_SETTINGS.ACTIVE = false
+        Screen:Destroy() 
+    end)
 
-    -- // PRECISION DRAG //
+    -- // DRAG SYSTEM //
     Header.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             Internal.Dragging = true
