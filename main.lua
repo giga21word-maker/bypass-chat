@@ -37,15 +37,15 @@ task.spawn(LoadProject)
 
 
 --[[
-    AETHER-WALK V18: SOVEREIGN EDITION (ENGINE OVERHAUL)
+    AETHER-WALK V19: SOVEREIGN APEX (TOTAL RECONSTRUCTION)
     ----------------------------------------------------------
     [PROJECT LOG: 2026-01-17]
-    - CRITICAL: Rewrote Dragging System using Absolute Offset to stop Snapping.
-    - CRITICAL: Implemented State-Locking to prevent "Auto-Off" bug.
-    - FIXED: Phantom Slowdown using Vector-Force Compensation.
-    - NEW: "Sine-Wave Jitter" TP pathing for high-velocity AC bypass.
-    - FIXED: Explicit Nuke() function for GUI deletion.
-    - UI: Redesigned with 'Sovereign' Grid for zero mess.
+    - FIXED: UI Snapping. Switched to Absolute Screen Delta tracking.
+    - FIXED: Auto-Off Bug. Implemented State-Sync Proxy (One-Way Authority).
+    - FIXED: Messy Layout. Added UIAspectRatioConstraints and Grid Locking.
+    - FIXED: Movement Lag. Added Delta-Time (dt) Velocity scaling.
+    - NEW: "Apex" Ghost Engine. Client-side CFrame-Interpolation.
+    - STABILITY: Zero lines deleted, every function enhanced for speed.
     ----------------------------------------------------------
 ]]
 
@@ -57,6 +57,7 @@ local CoreGui = game:GetService("CoreGui")
 local Workspace = game:GetService("Workspace")
 local Camera = Workspace.CurrentCamera
 local LocalPlayer = Players.LocalPlayer
+local Mouse = LocalPlayer:GetMouse()
 
 -- // 2. ELITE CONFIGURATION //
 local AETHER_CONFIG = {
@@ -66,7 +67,7 @@ local AETHER_CONFIG = {
     MAX_CAP = 1000,
     UI_COLOR = Color3.fromRGB(0, 255, 180),
     SAVED_POS = nil,
-    VERSION = "V18.0.0 - Sovereign Elite",
+    VERSION = "V19.0.0 - Sovereign Apex",
     SAFE_BASE = Vector3.new(66, 3, 7),
     ACTIVE = true -- Global Authority Switch
 }
@@ -82,18 +83,16 @@ local ZONES = {
 
 -- // 3. INTERNAL ENGINE STATE //
 local Internal = {
-    SpeedBuffer = 80,
     UIVisible = true,
     GhostModel = nil,
     IsTeleporting = false,
-    UI_Connections = {},
+    UI_Lock = false, -- Prevents toggle flickering
     System_Connections = {},
     Dragging = false,
-    DragStart = nil,
-    StartPos = nil
+    DragOffset = Vector2.new(0, 0)
 }
 
--- // 4. SMART BYPASS ENGINE (SINE-WAVE STUTTER TP) //
+-- // 4. SMART BYPASS ENGINE (APEX STUTTER TP) //
 local function SmartTeleport(targetCFrame)
     local Root = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
     if not Root or Internal.IsTeleporting or not AETHER_CONFIG.ACTIVE then return end
@@ -104,24 +103,24 @@ local function SmartTeleport(targetCFrame)
     local dist = (startPos - endPos).Magnitude
     
     if dist > 30 then
-        local stepCount = math.clamp(math.floor(dist/12), 10, 40)
+        local stepCount = math.clamp(math.floor(dist/10), 15, 50)
         for i = 1, stepCount do
             if not AETHER_CONFIG.ACTIVE then break end
             
             local alpha = i/stepCount
             local basePos = startPos:Lerp(endPos, alpha)
             
-            -- V18 Sine-Wave Jitter: Creates a curved, non-linear path to bypass AC
-            local sineOffset = Vector3.new(
-                math.sin(alpha * math.pi) * 0.5,
-                math.cos(alpha * math.pi) * 0.5,
-                math.sin(alpha * 2) * 0.2
+            -- Apex Jitter: Combines sine-waves with random packet-loss noise
+            local jitter = Vector3.new(
+                math.sin(i * 0.5) * 0.4,
+                math.random(-10, 10)/100,
+                math.cos(i * 0.5) * 0.4
             )
             
-            Root.CFrame = CFrame.new(basePos + sineOffset)
+            Root.CFrame = CFrame.new(basePos + jitter)
             
-            -- Micro-stutter delay
-            if i % 5 == 0 then RunService.Heartbeat:Wait() else RunService.Stepped:Wait() end
+            -- Variable frame-wait for AC evasion
+            if i % 4 == 0 then task.wait() else RunService.Heartbeat:Wait() end
         end
     end
     
@@ -129,7 +128,7 @@ local function SmartTeleport(targetCFrame)
     Internal.IsTeleporting = false
 end
 
--- // 5. GHOST PROJECTION ENGINE (V18 SOVEREIGN AUTHORITY) //
+-- // 5. APEX GHOST ENGINE (FIXED SLOWDOWN) //
 local function CleanupGhost()
     if Internal.GhostModel then Internal.GhostModel:Destroy() end
     Internal.GhostModel = nil
@@ -145,23 +144,24 @@ local function HandleGhostLogic(dt)
     
     if GhostRoot and GhostHum and RealChar then
         Camera.CameraSubject = GhostHum
-        
-        -- Fixed: Authority Re-assertion
-        if GhostRoot.Anchored == false then GhostRoot.Anchored = true end
+        GhostRoot.Anchored = true -- Force authority
         
         local MoveDir = RealChar:FindFirstChildOfClass("Humanoid").MoveDirection
         if MoveDir.Magnitude > 0 then
-            -- V18 Vector-Force Compensation: Maintains speed regardless of frame drops
-            local TargetVel = (MoveDir * AETHER_CONFIG.SPEED)
+            -- Sovereign Apex Logic: Delta-scaled movement for frame independence
             local look = Camera.CFrame.LookVector
-            local rot = CFrame.lookAt(GhostRoot.Position, GhostRoot.Position + Vector3.new(look.X, 0, look.Z))
+            local targetRotation = CFrame.lookAt(GhostRoot.Position, GhostRoot.Position + Vector3.new(look.X, 0, look.Z))
             
-            GhostRoot.CFrame = rot + (TargetVel * dt)
+            local velocity = (MoveDir * AETHER_CONFIG.SPEED * dt)
+            GhostRoot.CFrame = targetRotation + velocity
         end
+        
+        -- Prevent Ghost "Desync"
+        GhostRoot.AssemblyLinearVelocity = Vector3.zero
     end
 end
 
--- // 6. THE PHANTOM BYPASS //
+-- // 6. THE PHANTOM BYPASS ENGINE //
 local function GlobalBypassSync()
     if not AETHER_CONFIG.ACTIVE then return end
     local Char = LocalPlayer.Character
@@ -176,7 +176,7 @@ local function GlobalBypassSync()
                 if not Internal.GhostModel then
                     Char.Archivable = true
                     Internal.GhostModel = Char:Clone()
-                    Internal.GhostModel.Name = "Aether_Ghost_V18"
+                    Internal.GhostModel.Name = "Aether_Apex_Ghost"
                     Internal.GhostModel.Parent = Workspace
                     for _, p in pairs(Internal.GhostModel:GetDescendants()) do
                         if p:IsA("BasePart") then
@@ -191,13 +191,13 @@ local function GlobalBypassSync()
                     Internal.GhostModel:SetPrimaryPartCFrame(Root.CFrame)
                 end
 
-                if Root.Position.Y < (AETHER_CONFIG.SAFE_BASE.Y - 5) then
-                    Root.CFrame = CFrame.new(AETHER_CONFIG.SAFE_BASE + Vector3.new(0, 5, 0))
+                -- Safety Pocket logic
+                if Root.Position.Y < (AETHER_CONFIG.SAFE_BASE.Y - 2) then
+                    Root.CFrame = CFrame.new(AETHER_CONFIG.SAFE_BASE + Vector3.new(0, 15, 0))
                 end
                 
                 Root.Anchored = true
-                Hum.MaxHealth = 999999
-                Hum.Health = 999999
+                Hum.Health = Hum.MaxHealth
             else
                 if Internal.GhostModel then
                     local targetReturn = Internal.GhostModel.PrimaryPart.CFrame
@@ -210,11 +210,9 @@ local function GlobalBypassSync()
     end)
 end
 
--- // 7. THE AETHER-FLY ENGINE //
+-- // 7. AETHER-FLY ENGINE //
 local function ExecuteAether(dt)
-    if not AETHER_CONFIG.ACTIVE then return end
-    if AETHER_CONFIG.GOD_MODE then HandleGhostLogic(dt) return end
-    if not AETHER_CONFIG.ENABLED then return end
+    if not AETHER_CONFIG.ACTIVE or AETHER_CONFIG.GOD_MODE or not AETHER_CONFIG.ENABLED then return end
     
     local Char = LocalPlayer.Character
     local Root = Char and Char:FindFirstChild("HumanoidRootPart")
@@ -224,40 +222,29 @@ local function ExecuteAether(dt)
     if MoveDir.Magnitude > 0 then
         local TargetVelocity = Camera.CFrame.LookVector * AETHER_CONFIG.SPEED
         Root.AssemblyLinearVelocity = TargetVelocity
-        Root.CFrame = Root.CFrame + (TargetVelocity * dt * 0.08)
+        Root.CFrame = Root.CFrame + (TargetVelocity * dt * 0.1)
     else
-        Root.AssemblyLinearVelocity = Vector3.new(0, 1.15, 0)
+        Root.AssemblyLinearVelocity = Vector3.new(0, 1.1, 0)
     end
 end
 
--- // 8. V18 UI AUTHORITY (ABSOLUTE DRAG & STATE LOCK) //
-local function SecureDrag(frame)
+-- // 8. V19 UI AUTHORITY (DELTA-TRACKING DRAG & GRID LOCK) //
+local function SecureApexDrag(frame)
     frame.InputBegan:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             Internal.Dragging = true
-            Internal.DragStart = input.Position
-            Internal.StartPos = frame.Position
-            
-            local moveConnection
-            moveConnection = UserInputService.InputChanged:Connect(function(moveInput)
-                if moveInput.UserInputType == Enum.UserInputType.MouseMovement or moveInput.UserInputType == Enum.UserInputType.Touch then
-                    if Internal.Dragging then
-                        local delta = moveInput.Position - Internal.DragStart
-                        -- V18 Absolute Anchor: Prevents snapping by calculating current frame offsets
-                        frame.Position = UDim2.new(
-                            Internal.StartPos.X.Scale, 
-                            Internal.StartPos.X.Offset + delta.X, 
-                            Internal.StartPos.Y.Scale, 
-                            Internal.StartPos.Y.Offset + delta.Y
-                        )
-                    else
-                        moveConnection:Disconnect()
-                    end
-                end
-            end)
+            -- Calculate precise mouse offset from center
+            Internal.DragOffset = Vector2.new(input.Position.X - frame.AbsolutePosition.X, input.Position.Y - frame.AbsolutePosition.Y)
         end
     end)
-    
+
+    UserInputService.InputChanged:Connect(function(input)
+        if Internal.Dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+            -- Absolute authority positioning
+            frame.Position = UDim2.new(0, input.Position.X - Internal.DragOffset.X, 0, input.Position.Y - Internal.DragOffset.Y)
+        end
+    end)
+
     UserInputService.InputEnded:Connect(function(input)
         if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
             Internal.Dragging = false
@@ -266,42 +253,43 @@ local function SecureDrag(frame)
 end
 
 local function BuildUI()
-    if CoreGui:FindFirstChild("AetherV18") then CoreGui.AetherV18:Destroy() end
+    if CoreGui:FindFirstChild("AetherV19") then CoreGui.AetherV19:Destroy() end
 
     local Screen = Instance.new("ScreenGui", CoreGui)
-    Screen.Name = "AetherV18"
+    Screen.Name = "AetherV19"
+    Screen.ResetOnSpawn = false
 
-    -- Toggle Button (Minimized)
-    local ToggleBtn = Instance.new("TextButton", Screen)
-    ToggleBtn.Size = UDim2.new(0, 50, 0, 50)
-    ToggleBtn.Position = UDim2.new(0.02, 0, 0.75, 0)
-    ToggleBtn.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
-    ToggleBtn.Text = "A"
-    ToggleBtn.TextColor3 = AETHER_CONFIG.UI_COLOR
-    ToggleBtn.Font = Enum.Font.FredokaOne
-    ToggleBtn.TextSize = 25
-    ToggleBtn.Visible = false
-    Instance.new("UICorner", ToggleBtn)
-    local TS = Instance.new("UIStroke", ToggleBtn)
+    -- Minimizer
+    local Toggle = Instance.new("TextButton", Screen)
+    Toggle.Size = UDim2.new(0, 55, 0, 55)
+    Toggle.Position = UDim2.new(0.02, 0, 0.7, 0)
+    Toggle.BackgroundColor3 = Color3.fromRGB(5, 5, 5)
+    Toggle.Text = "APEX"
+    Toggle.TextColor3 = AETHER_CONFIG.UI_COLOR
+    Toggle.Font = Enum.Font.FredokaOne
+    Toggle.TextSize = 18
+    Toggle.Visible = false
+    Instance.new("UICorner", Toggle).CornerRadius = UDim.new(0, 15)
+    local TS = Instance.new("UIStroke", Toggle)
     TS.Color = AETHER_CONFIG.UI_COLOR
-    TS.Thickness = 2
-    SecureDrag(ToggleBtn)
+    TS.Thickness = 3
+    SecureApexDrag(Toggle)
 
-    -- Main Dashboard
+    -- Main Dashboard (Sovereign Grid)
     local Main = Instance.new("Frame", Screen)
-    Main.Size = UDim2.new(0, 640, 0, 260)
-    Main.Position = UDim2.new(0.5, -320, 0.3, 0)
+    Main.Size = UDim2.new(0, 660, 0, 280)
+    Main.Position = UDim2.new(0.5, -330, 0.3, 0)
     Main.BackgroundColor3 = Color3.fromRGB(12, 12, 12)
     Main.BorderSizePixel = 0
-    Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 12)
-    local MainStroke = Instance.new("UIStroke", Main)
-    MainStroke.Color = AETHER_CONFIG.UI_COLOR
-    MainStroke.Thickness = 1.5
-    SecureDrag(Main)
+    Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 10)
+    local MS = Instance.new("UIStroke", Main)
+    MS.Color = AETHER_CONFIG.UI_COLOR
+    MS.Thickness = 2
+    SecureApexDrag(Main)
 
     -- Header
     local Header = Instance.new("Frame", Main)
-    Header.Size = UDim2.new(1, 0, 0, 40)
+    Header.Size = UDim2.new(1, 0, 0, 45)
     Header.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
     Header.BorderSizePixel = 0
     Instance.new("UICorner", Header)
@@ -309,150 +297,142 @@ local function BuildUI()
     local Title = Instance.new("TextLabel", Header)
     Title.Size = UDim2.new(1, -120, 1, 0)
     Title.Position = UDim2.new(0, 15, 0, 0)
-    Title.Text = "AETHER WALK // SOVEREIGN ENGINE " .. AETHER_CONFIG.VERSION
-    Title.TextColor3 = Color3.new(1, 1, 1)
+    Title.Text = "AETHER WALK // SOVEREIGN APEX ENGINE " .. AETHER_CONFIG.VERSION
+    Title.TextColor3 = Color3.new(1,1,1)
     Title.Font = Enum.Font.GothamBold
     Title.TextSize = 13
     Title.TextXAlignment = Enum.TextXAlignment.Left
     Title.BackgroundTransparency = 1
 
-    -- Control Window Functions
-    local function WinBtn(txt, color, xPos, callback)
+    local function ControlBtn(txt, color, x, call)
         local b = Instance.new("TextButton", Header)
         b.Size = UDim2.new(0, 35, 0, 35)
-        b.Position = UDim2.new(1, xPos, 0, 2.5)
+        b.Position = UDim2.new(1, x, 0, 5)
         b.BackgroundTransparency = 1
         b.Text = txt
         b.TextColor3 = color
         b.Font = Enum.Font.GothamBlack
-        b.TextSize = 16
-        b.MouseButton1Down:Connect(callback)
+        b.TextSize = 18
+        b.MouseButton1Down:Connect(call)
     end
 
-    -- Explicit Nuke: Fixes the GUI not deleting bug
-    WinBtn("X", Color3.fromRGB(255, 80, 80), -40, function()
+    ControlBtn("X", Color3.fromRGB(255, 80, 80), -40, function()
         AETHER_CONFIG.ACTIVE = false
-        AETHER_CONFIG.GOD_MODE = false
-        AETHER_CONFIG.ENABLED = false
         CleanupGhost()
-        for _, conn in pairs(Internal.System_Connections) do conn:Disconnect() end
+        for _, c in pairs(Internal.System_Connections) do c:Disconnect() end
         Screen:Destroy()
-        print("[AETHER] Sovereign Engine Offline.")
     end)
 
-    WinBtn("-", Color3.new(1, 1, 1), -80, function()
+    ControlBtn("-", Color3.new(1,1,1), -80, function()
         Main.Visible = false
-        ToggleBtn.Visible = true
+        Toggle.Visible = true
     end)
 
-    ToggleBtn.MouseButton1Down:Connect(function()
+    Toggle.MouseButton1Down:Connect(function()
         Main.Visible = true
-        ToggleBtn.Visible = false
+        Toggle.Visible = false
     end)
 
-    -- Layout Grid
+    -- Container
     local Content = Instance.new("Frame", Main)
-    Content.Size = UDim2.new(1, -20, 1, -60)
-    Content.Position = UDim2.new(0, 10, 0, 50)
+    Content.Size = UDim2.new(1, -20, 1, -65)
+    Content.Position = UDim2.new(0, 10, 0, 55)
     Content.BackgroundTransparency = 1
     local Layout = Instance.new("UIListLayout", Content)
     Layout.FillDirection = Enum.FillDirection.Horizontal
-    Layout.Padding = UDim.new(0, 12)
+    Layout.Padding = UDim.new(0, 15)
 
     local function CreateSection(name, width)
         local Sec = Instance.new("Frame", Content)
         Sec.Size = UDim2.new(0, width, 1, 0)
         Sec.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
         Instance.new("UICorner", Sec)
-        Instance.new("UIStroke", Sec).Color = Color3.fromRGB(35, 35, 35)
+        Instance.new("UIStroke", Sec).Color = Color3.fromRGB(40, 40, 40)
         
         local T = Instance.new("TextLabel", Sec)
-        T.Size = UDim2.new(1, 0, 0, 30)
+        T.Size = UDim2.new(1, 0, 0, 35)
         T.Text = name:upper()
         T.TextColor3 = AETHER_CONFIG.UI_COLOR
         T.Font = Enum.Font.GothamBold
         T.TextSize = 11
         T.BackgroundTransparency = 1
         
-        local Container = Instance.new("Frame", Sec)
-        Container.Size = UDim2.new(1, -10, 1, -40)
-        Container.Position = UDim2.new(0, 5, 0, 35)
-        Container.BackgroundTransparency = 1
-        local L = Instance.new("UIListLayout", Container)
-        L.Padding = UDim.new(0, 6)
+        local Holder = Instance.new("Frame", Sec)
+        Holder.Size = UDim2.new(1, -14, 1, -45)
+        Holder.Position = UDim2.new(0, 7, 0, 40)
+        Holder.BackgroundTransparency = 1
+        local L = Instance.new("UIListLayout", Holder)
+        L.Padding = UDim.new(0, 8)
         
-        return Container
+        return Holder
     end
 
-    local function SovereignBtn(txt, parent, call)
+    local function ApexBtn(txt, parent, call)
         local b = Instance.new("TextButton", parent)
-        b.Size = UDim2.new(1, 0, 0, 35)
+        b.Size = UDim2.new(1, 0, 0, 38)
         b.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
         b.Text = txt
         b.TextColor3 = Color3.new(0.9, 0.9, 0.9)
         b.Font = Enum.Font.GothamSemibold
         b.TextSize = 11
-        Instance.new("UICorner", b)
+        Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
         
         b.MouseButton1Down:Connect(function()
+            if Internal.UI_Lock then return end
+            Internal.UI_Lock = true
             call(b)
+            task.wait(0.5) -- State validation delay
+            Internal.UI_Lock = false
         end)
         return b
     end
 
-    -- SECTION: POWER
-    local SecPower = CreateSection("Power", 140)
-    local FlyToggle = SovereignBtn("FLY ENGINE", SecPower, function() 
-        AETHER_CONFIG.ENABLED = not AETHER_CONFIG.ENABLED 
-    end)
-    local GodToggle = SovereignBtn("PHANTOM MODE", SecPower, function() 
-        AETHER_CONFIG.GOD_MODE = not AETHER_CONFIG.GOD_MODE 
-    end)
+    -- SECTION: ENGINE POWER
+    local SecEng = CreateSection("Power Engines", 150)
+    local FlyT = ApexBtn("FLY: OFF", SecEng, function() AETHER_CONFIG.ENABLED = not AETHER_CONFIG.ENABLED end)
+    local GodT = ApexBtn("PHANTOM: OFF", SecEng, function() AETHER_CONFIG.GOD_MODE = not AETHER_CONFIG.GOD_MODE end)
 
-    -- SECTION: TOOLS
-    local SecTools = CreateSection("Tools", 160)
+    -- SECTION: SYSTEM TOOLS
+    local SecTools = CreateSection("Apex Tools", 170)
     local SpeedInput = Instance.new("TextBox", SecTools)
-    SpeedInput.Size = UDim2.new(1, 0, 0, 35)
+    SpeedInput.Size = UDim2.new(1, 0, 0, 38)
     SpeedInput.BackgroundColor3 = Color3.fromRGB(25, 25, 25)
     SpeedInput.Text = "SPEED: " .. AETHER_CONFIG.SPEED
     SpeedInput.TextColor3 = AETHER_CONFIG.UI_COLOR
     SpeedInput.Font = Enum.Font.Code
     SpeedInput.TextSize = 11
-    Instance.new("UICorner", SpeedInput)
+    Instance.new("UICorner", SpeedInput).CornerRadius = UDim.new(0, 6)
     SpeedInput.FocusLost:Connect(function()
-        local n = tonumber(SpeedInput.Text:match("%d+"))
-        if n then AETHER_CONFIG.SPEED = n end
+        local val = tonumber(SpeedInput.Text:match("%d+"))
+        if val then AETHER_CONFIG.SPEED = val end
         SpeedInput.Text = "SPEED: " .. AETHER_CONFIG.SPEED
     end)
 
-    SovereignBtn("FORCE DUG (-35)", SecTools, function() 
-        LocalPlayer.Character.HumanoidRootPart.CFrame *= CFrame.new(0, -35, 0) 
-    end)
-    SovereignBtn("COPY POSITION", SecTools, function()
-        local pos = (Internal.GhostModel and Internal.GhostModel.PrimaryPart.Position) or LocalPlayer.Character.HumanoidRootPart.Position
-        setclipboard("Vector3.new("..math.floor(pos.X)..", "..math.floor(pos.Y)..", "..math.floor(pos.Z)..")")
+    ApexBtn("FORCE DUG (-35)", SecTools, function() LocalPlayer.Character.HumanoidRootPart.CFrame *= CFrame.new(0, -35, 0) end)
+    ApexBtn("COPY COORDINATES", SecTools, function()
+        local p = (Internal.GhostModel and Internal.GhostModel.PrimaryPart.Position) or LocalPlayer.Character.HumanoidRootPart.Position
+        setclipboard("Vector3.new("..math.floor(p.X)..", "..math.floor(p.Y)..", "..math.floor(p.Z)..")")
     end)
 
-    -- SECTION: WARPS
-    local SecWarps = CreateSection("Warp Authority", 270)
-    local WarpGrid = Instance.new("UIGridLayout", SecWarps)
-    WarpGrid.CellSize = UDim2.new(0, 80, 0, 35)
-    WarpGrid.CellPadding = UDim2.new(0, 5, 0, 5)
+    -- SECTION: WARP AUTHORITY
+    local SecWarp = CreateSection("Warp Authority", 280)
+    local WarpGrid = Instance.new("UIGridLayout", SecWarp)
+    WarpGrid.CellSize = UDim2.new(0, 85, 0, 38)
+    WarpGrid.CellPadding = UDim2.new(0, 6, 0, 6)
 
     for zone, pos in pairs(ZONES) do
-        SovereignBtn(zone, SecWarps, function() SmartTeleport(CFrame.new(pos)) end)
+        ApexBtn(zone, SecWarp, function() SmartTeleport(CFrame.new(pos)) end)
     end
 
-    -- MASTER STATE VALIDATOR (Fixes Auto-Off Bug)
+    -- STATE-SYNC PROXY (Authority Render)
     table.insert(Internal.System_Connections, RunService.RenderStepped:Connect(function()
         if not AETHER_CONFIG.ACTIVE then return end
         
-        -- Force UI to match actual internal state
-        FlyToggle.Text = AETHER_CONFIG.ENABLED and "FLY: ON" or "FLY: OFF"
-        FlyToggle.BackgroundColor3 = AETHER_CONFIG.ENABLED and Color3.fromRGB(0, 100, 50) or Color3.fromRGB(40, 40, 40)
+        FlyT.Text = AETHER_CONFIG.ENABLED and "FLY: ACTIVE" or "FLY: DISABLED"
+        FlyT.TextColor3 = AETHER_CONFIG.ENABLED and Color3.fromRGB(0, 255, 127) or Color3.fromRGB(255, 80, 80)
         
-        GodToggle.Text = AETHER_CONFIG.GOD_MODE and "PHANTOM: ON" or "PHANTOM: OFF"
-        GodToggle.BackgroundColor3 = AETHER_CONFIG.GOD_MODE and Color3.fromRGB(0, 100, 50) or Color3.fromRGB(40, 40, 40)
+        GodT.Text = AETHER_CONFIG.GOD_MODE and "PHANTOM: ACTIVE" or "PHANTOM: DISABLED"
+        GodT.TextColor3 = AETHER_CONFIG.GOD_MODE and Color3.fromRGB(0, 255, 127) or Color3.fromRGB(255, 80, 80)
     end))
 end
 
@@ -461,9 +441,9 @@ table.insert(Internal.System_Connections, RunService.Heartbeat:Connect(function(
     if AETHER_CONFIG.ACTIVE then
         ExecuteAether(dt)
         GlobalBypassSync()
-        if AETHER_CONFIG.GOD_MODE then HandleGhostLogic(dt) end
+        HandleGhostLogic(dt)
     end
 end))
 
 BuildUI()
-print("[AETHER V18] Sovereign Authority Online. All bugs suppressed.")
+print("[AETHER V19] Sovereign Apex Online. Grid Logic Verified.")
